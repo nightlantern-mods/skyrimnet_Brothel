@@ -1,4 +1,4 @@
-# SkyrimNet Brothel 0.1.3
+# SkyrimNet Brothel 0.1.4
 
 Run your own brothel. Make any interior your brothel, register women (followers or anyone else) as
 workers, and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the

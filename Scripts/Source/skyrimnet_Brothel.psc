@@ -83,6 +83,8 @@ Float Property DealTimeoutSeconds = 60.0 AutoReadOnly
 String pendingAction
 
 Event OnInit()
+	; MCM Helper and SkyUI register the menu from their own OnInit.
+	Parent.OnInit()
 	customers = new Actor[10]
 	workers = new Actor[64]
 	workerCount = 0
