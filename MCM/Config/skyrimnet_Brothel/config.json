@@ -1,0 +1,142 @@
+{
+	"modName": "skyrimnet_Brothel",
+	"displayName": "$SNB_ModName",
+	"minMcmVersion": 9,
+	"cursorFillMode": "topToBottom",
+	"content": [
+		{
+			"type": "header",
+			"text": "$SNB_HeaderBrothel"
+		},
+		{
+			"id": "sBrothelName:General",
+			"type": "text",
+			"text": "$SNB_CurrentBrothel",
+			"help": "$SNB_CurrentBrothelHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingString"
+			}
+		},
+		{
+			"type": "text",
+			"text": "$SNB_Designate",
+			"help": "$SNB_DesignateHelp",
+			"action": {
+				"type": "CallFunction",
+				"function": "DesignateBrothel"
+			}
+		},
+		{
+			"type": "text",
+			"text": "$SNB_Clear",
+			"help": "$SNB_ClearHelp",
+			"action": {
+				"type": "CallFunction",
+				"function": "ClearBrothel"
+			}
+		},
+		{
+			"type": "header",
+			"text": "$SNB_HeaderWorkers"
+		},
+		{
+			"id": "sWorkerCount:General",
+			"type": "text",
+			"text": "$SNB_WorkerCount",
+			"help": "$SNB_WorkerCountHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingString"
+			}
+		},
+		{
+			"id": "iWorkerPick:General",
+			"type": "menu",
+			"text": "$SNB_WorkerList",
+			"help": "$SNB_WorkerListHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingInt",
+				"options": ["$SNB_None"]
+			}
+		},
+		{
+			"type": "text",
+			"text": "$SNB_UnregisterPicked",
+			"help": "$SNB_UnregisterPickedHelp",
+			"action": {
+				"type": "CallFunction",
+				"function": "UnregisterPickedWorker"
+			}
+		},
+		{
+			"type": "header",
+			"text": "$SNB_HeaderAnswer"
+		},
+		{
+			"id": "bAlwaysAccept:General",
+			"type": "toggle",
+			"text": "$SNB_AlwaysAccept",
+			"help": "$SNB_AlwaysAcceptHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingBool"
+			}
+		},
+		{
+			"id": "bAllowRefuse:General",
+			"type": "toggle",
+			"text": "$SNB_AllowRefuse",
+			"help": "$SNB_AllowRefuseHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingBool"
+			}
+		},
+		{
+			"id": "iBedMode:General",
+			"type": "enum",
+			"text": "$SNB_BedMode",
+			"help": "$SNB_BedModeHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingInt",
+				"options": ["$SNB_BedFollowSexLab", "$SNB_BedAlways"]
+			}
+		},
+		{
+			"type": "header",
+			"text": "$SNB_HeaderKeys"
+		},
+		{
+			"id": "iServeKey:General",
+			"type": "keymap",
+			"text": "$SNB_ServeKey",
+			"help": "$SNB_ServeKeyHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingInt"
+			}
+		},
+		{
+			"id": "iRegisterKey:General",
+			"type": "keymap",
+			"text": "$SNB_RegisterKey",
+			"help": "$SNB_RegisterKeyHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingInt"
+			}
+		},
+		{
+			"type": "header",
+			"text": "$SNB_HeaderPayment"
+		},
+		{
+			"id": "iPayment:General",
+			"type": "slider",
+			"text": "$SNB_Payment",
+			"help": "$SNB_PaymentHelp",
+			"valueOptions": {
+				"min": 0,
+				"max": 1000,
+				"step": 10,
+				"formatString": "{0}",
+				"sourceType": "ModSettingInt"
+			}
+		}
+	]
+}
