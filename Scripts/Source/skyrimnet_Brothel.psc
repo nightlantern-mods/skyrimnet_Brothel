@@ -1,13 +1,14 @@
 Scriptname skyrimnet_Brothel extends MCM_ConfigBase
 {Brothel run by the player. A chosen interior cell is the brothel; female followers registered as
-workers serve the three resident customers there. Settings live in MCM/Settings/skyrimnet_Brothel.ini.}
+workers serve the resident customers there. Settings live in MCM/Settings/skyrimnet_Brothel.ini.}
 
 ; Records of this plugin, looked up by FormID so the quest needs no property links.
 Int Property CustomerBaseID = 0x801 AutoReadOnly
 String Property PluginName = "skyrimnet_Brothel.esp" AutoReadOnly
 String Property SceneHook = "skyrimnet_Brothel" AutoReadOnly
 
-Int Property CustomerCount = 3 AutoReadOnly
+; The MCM's customer count runs from 1 to this.
+Int Property MaxCustomers = 10 AutoReadOnly
 Int Property MaxWorkers = 64 AutoReadOnly
 
 ; A served customer that never reaches a SexLab end hook would block the key forever; after this
@@ -43,7 +44,7 @@ Float Property DealTimeoutSeconds = 60.0 AutoReadOnly
 String pendingAction
 
 Event OnInit()
-	customers = new Actor[3]
+	customers = new Actor[10]
 	workers = new Actor[64]
 	workerCount = 0
 	Setup()
@@ -51,6 +52,7 @@ EndEvent
 
 ; Called by the player alias on every save load: key and mod-event registrations do not survive one.
 Function Setup()
+	GrowCustomerSlots()
 	RegisterKeys()
 	RegisterForModEvent("HookAnimationEnd_" + SceneHook, "OnBrothelSceneEnd")
 	RegisterActions()
@@ -118,6 +120,9 @@ EndFunction
 Event OnSettingChange(String a_ID)
 	If a_ID == "iServeKey:General" || a_ID == "iRegisterKey:General"
 		RegisterKeys()
+	ElseIf a_ID == "iCustomerCount:General"
+		pendingAction = "sync"
+		RegisterForSingleUpdate(0.1)
 	EndIf
 EndEvent
 
@@ -168,9 +173,16 @@ Event OnUpdate()
 		brothelCell = None
 		SetModSettingString("sBrothelName:General", "$SNB_None")
 		Debug.Notification("$SNB_Cleared")
+	ElseIf queued == "sync"
+		SyncCustomers()
 	ElseIf busy
 		; The timeout queued by ServeCustomer.
 		EndDeal()
+		Return
+	EndIf
+	; A queued action replaced the pending timeout; put a timeout back while a customer is served.
+	If queued != "" && busy
+		RegisterForSingleUpdate(SceneTimeoutSeconds)
 	EndIf
 EndEvent
 
@@ -183,16 +195,93 @@ Function DoDesignateBrothel()
 	EndIf
 	DismissCustomers()
 	brothelCell = here
-	ActorBase customerBase = Game.GetFormFromFile(CustomerBaseID, PluginName) as ActorBase
 	Int i = 0
-	While i < CustomerCount
-		Actor customer = player.PlaceAtMe(customerBase, 1, True, False) as Actor
-		customer.MoveTo(player, Utility.RandomFloat(-200.0, 200.0), Utility.RandomFloat(-200.0, 200.0), 0.0)
-		customers[i] = customer
+	While i < TargetCustomerCount()
+		customers[i] = SpawnCustomer(player)
 		i += 1
 	EndWhile
 	SetModSettingString("sBrothelName:General", here.GetName())
 	Debug.Notification("$SNB_Designated")
+EndFunction
+
+Int Function TargetCustomerCount()
+	Int count = GetModSettingInt("iCustomerCount:General")
+	If count < 1
+		Return 1
+	ElseIf count > MaxCustomers
+		Return MaxCustomers
+	EndIf
+	Return count
+EndFunction
+
+Actor Function SpawnCustomer(ObjectReference near)
+	ActorBase customerBase = Game.GetFormFromFile(CustomerBaseID, PluginName) as ActorBase
+	Actor customer = near.PlaceAtMe(customerBase, 1, True, False) as Actor
+	customer.MoveTo(near, Utility.RandomFloat(-200.0, 200.0), Utility.RandomFloat(-200.0, 200.0), 0.0)
+	Return customer
+EndFunction
+
+; Saves from before the customer count setting hold a 3-slot array.
+Function GrowCustomerSlots()
+	If customers && customers.Length >= MaxCustomers
+		Return
+	EndIf
+	Actor[] grown = new Actor[10]
+	Int i = 0
+	While customers && i < customers.Length
+		grown[i] = customers[i]
+		i += 1
+	EndWhile
+	customers = grown
+EndFunction
+
+; Brings the brothel to the MCM's customer count. New customers appear beside one already there
+; (or beside the player in the brothel); extra ones leave, never the one being served. Dead
+; customers are cleared away and replaced.
+Function SyncCustomers()
+	If !brothelCell
+		Return
+	EndIf
+	Actor anchor = None
+	Int present = 0
+	Int i = 0
+	While i < customers.Length
+		If customers[i] && customers[i].IsDead()
+			customers[i].Disable()
+			customers[i].Delete()
+			customers[i] = None
+		EndIf
+		If customers[i]
+			present += 1
+			If !anchor
+				anchor = customers[i]
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+	If !anchor && Game.GetPlayer().GetParentCell() == brothelCell
+		anchor = Game.GetPlayer()
+	EndIf
+
+	Int target = TargetCustomerCount()
+	i = 0
+	While present < target && anchor && i < customers.Length
+		If !customers[i]
+			customers[i] = SpawnCustomer(anchor)
+			present += 1
+		EndIf
+		i += 1
+	EndWhile
+	i = customers.Length - 1
+	While present > target && i >= 0
+		If customers[i] && customers[i] != sceneCustomer
+			customers[i].Disable()
+			customers[i].Delete()
+			customers[i] = None
+			present -= 1
+		EndIf
+		i -= 1
+	EndWhile
 EndFunction
 
 Function DismissCustomers()
@@ -443,7 +532,7 @@ Actor Function PickWorker(SexLabFramework sexLab)
 EndFunction
 
 Actor Function PickCustomer(SexLabFramework sexLab)
-	Actor[] present = new Actor[3]
+	Actor[] present = new Actor[10]
 	Int count = 0
 	Int i = 0
 	While i < customers.Length

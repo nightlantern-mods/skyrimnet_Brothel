@@ -1,4 +1,4 @@
-# SkyrimNet Brothel 0.1.1
+# SkyrimNet Brothel 0.1.2
 
 Run your own brothel. Make any interior your brothel, register your female followers as workers,
 and send the resident customers to them. SkyrimNet's AI voices the customer's offer and the
@@ -33,7 +33,7 @@ one.
 1. **Set two hotkeys** in the MCM (Brothel page): *Send a customer* and *Register / unregister
    worker*. They are unset at first.
 2. **Make a brothel.** Walk into any interior, choose *Make this interior the brothel* in the MCM
-   and close the menu. Three customers move in and wander about. Their looks are picked at random
+   and close the menu. Customers move in (three by default, set with *Customers*) and wander about. Their looks are picked at random
    from vanilla men of several races.
 3. **Register workers.** Aim at a female follower and press *Register / unregister worker*. Press
    it on her again to unregister her. The *Workers* section of the MCM lists everyone registered;
@@ -55,6 +55,7 @@ one.
 | Current brothel | None | The interior that is your brothel. |
 | Make this interior the brothel | | Moves the brothel (and its customers) to where you stand. |
 | Close the brothel | | The customers leave. |
+| Customers | 3 | 1 to 10. Changing it adds or sends away customers once the menu closes; the one being served stays. |
 | Registered workers / Worker list | | Who is registered; `*` = in the brothel now. |
 | Unregister the selected worker | | Unregisters the worker picked in the list. |
 | Always accept | Off | The worker always says yes, and the scene follows the exchange at once. |
@@ -74,7 +75,7 @@ use them, and only while she owes an answer:
 
 ## Notes and limits
 
-- One brothel at a time, with three customers. Only interiors can be a brothel.
+- One brothel at a time, with 1 to 10 customers. Only interiors can be a brothel.
 - Only women can be registered, and only while they are your followers. They take customers only
   while they are inside the brothel.
 - A worker must be free (not in another SexLab scene) to be picked; so must the customer.

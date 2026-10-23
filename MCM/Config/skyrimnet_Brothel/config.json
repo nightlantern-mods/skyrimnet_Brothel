@@ -36,6 +36,19 @@
 			}
 		},
 		{
+			"id": "iCustomerCount:General",
+			"type": "slider",
+			"text": "$SNB_CustomerCount",
+			"help": "$SNB_CustomerCountHelp",
+			"valueOptions": {
+				"min": 1,
+				"max": 10,
+				"step": 1,
+				"formatString": "{0}",
+				"sourceType": "ModSettingInt"
+			}
+		},
+		{
 			"type": "header",
 			"text": "$SNB_HeaderWorkers"
 		},
