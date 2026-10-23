@@ -1,0 +1,9 @@
+{
+  "string": {
+    "approachBefore": "",
+    "approachBetween": " is approaching ",
+    "approachAfter": ".",
+    "approachYouBefore": "",
+    "approachYouAfter": " is approaching you."
+  }
+}

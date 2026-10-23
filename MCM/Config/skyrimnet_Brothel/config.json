@@ -49,6 +49,37 @@
 			}
 		},
 		{
+			"id": "bLocalCustomers:General",
+			"type": "toggle",
+			"text": "$SNB_LocalCustomers",
+			"help": "$SNB_LocalCustomersHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingBool"
+			}
+		},
+		{
+			"id": "bAllowSameSex:General",
+			"type": "toggle",
+			"text": "$SNB_AllowSameSex",
+			"help": "$SNB_AllowSameSexHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingBool"
+			}
+		},
+		{
+			"id": "iMaxConcurrent:General",
+			"type": "slider",
+			"text": "$SNB_MaxConcurrent",
+			"help": "$SNB_MaxConcurrentHelp",
+			"valueOptions": {
+				"min": 1,
+				"max": 5,
+				"step": 1,
+				"formatString": "{0}",
+				"sourceType": "ModSettingInt"
+			}
+		},
+		{
 			"type": "header",
 			"text": "$SNB_HeaderWorkers"
 		},
@@ -68,7 +99,9 @@
 			"help": "$SNB_WorkerListHelp",
 			"valueOptions": {
 				"sourceType": "ModSettingInt",
-				"options": ["$SNB_None"]
+				"options": [
+					"$SNB_None"
+				]
 			}
 		},
 		{
@@ -109,7 +142,10 @@
 			"help": "$SNB_BedModeHelp",
 			"valueOptions": {
 				"sourceType": "ModSettingInt",
-				"options": ["$SNB_BedFollowSexLab", "$SNB_BedAlways"]
+				"options": [
+					"$SNB_BedFollowSexLab",
+					"$SNB_BedAlways"
+				]
 			}
 		},
 		{
@@ -135,6 +171,41 @@
 			}
 		},
 		{
+			"id": "iPlayerServeKey:General",
+			"type": "keymap",
+			"text": "$SNB_PlayerServeKey",
+			"help": "$SNB_PlayerServeKeyHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingInt"
+			}
+		},
+		{
+			"type": "header",
+			"text": "$SNB_HeaderAuto"
+		},
+		{
+			"id": "bAutoServe:General",
+			"type": "toggle",
+			"text": "$SNB_AutoServe",
+			"help": "$SNB_AutoServeHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingBool"
+			}
+		},
+		{
+			"id": "iAutoInterval:General",
+			"type": "slider",
+			"text": "$SNB_AutoInterval",
+			"help": "$SNB_AutoIntervalHelp",
+			"valueOptions": {
+				"min": 10,
+				"max": 1800,
+				"step": 10,
+				"formatString": "{0}",
+				"sourceType": "ModSettingInt"
+			}
+		},
+		{
 			"type": "header",
 			"text": "$SNB_HeaderPayment"
 		},
@@ -149,6 +220,19 @@
 				"step": 10,
 				"formatString": "{0}",
 				"sourceType": "ModSettingInt"
+			}
+		},
+		{
+			"type": "header",
+			"text": "$SNB_HeaderDebug"
+		},
+		{
+			"id": "bDebugLog:General",
+			"type": "toggle",
+			"text": "$SNB_DebugLog",
+			"help": "$SNB_DebugLogHelp",
+			"valueOptions": {
+				"sourceType": "ModSettingBool"
 			}
 		}
 	]
