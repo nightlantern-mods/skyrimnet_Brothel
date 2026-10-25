@@ -30,9 +30,9 @@ Int Property FormTypeFurniture = 40 AutoReadOnly
 Float Property SceneSpacing = 250.0 AutoReadOnly
 ; How close the customer comes to the worker to talk.
 Float Property TalkDistance = 150.0 AutoReadOnly
-; Scenes looked at, and kept, when choosing scenes with one sex per position.
-Int Property SceneChecks = 80 AutoReadOnly
-Int Property SceneChoices = 10 AutoReadOnly
+; SexLab 1.6x rather than P+: their scene APIs differ, so each call that depends on it goes to
+; skyrimnet_BrothelSL16 or skyrimnet_BrothelSLP (see DetectSexLab).
+Bool legacySexLab
 
 Cell brothelCell
 Actor[] customers
@@ -94,6 +94,7 @@ EndEvent
 ; Called by the player alias on every save load: key and mod-event registrations do not survive one,
 ; and no deal or scene in progress does either.
 Function Setup()
+	DetectSexLab()
 	GrowCustomerSlots()
 	ResetDeals()
 	talking = False
@@ -118,6 +119,24 @@ Function RegisterActions()
 		"Turn down the paying customer's offer. Use this only when you have refused him in the conversation.", \
 		"skyrimnet_Brothel", "Refuse_IsEligible", "skyrimnet_Brothel", "RefuseCustomerOffer_Execute", \
 		"", "PAPYRUS", 1, "")
+EndFunction
+
+; Looked at on every load, as the player may have switched SexLab since the save. 1.6x's
+; SexLabUtil.GetVersion returns its own version (16601 for 1.66b); P+'s returns the version of its
+; SKSE plugin, a far larger number (or 0 without the plugin, still P+).
+Function DetectSexLab()
+	Int version = SexLabUtil.GetVersion()
+	legacySexLab = version > 0 && version < 20000
+	If GetModSettingBool("bDebugLog:General")
+		DebugLog("SexLab version " + version + ", using the " + SexLabName() + " calls")
+	EndIf
+EndFunction
+
+String Function SexLabName()
+	If legacySexLab
+		Return "1.6x"
+	EndIf
+	Return "P+"
 EndFunction
 
 skyrimnet_Brothel Function Brothel() Global
@@ -608,12 +627,16 @@ ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] p
 	ObjectReference bedroll = None
 	Float bedDistance = 0.0
 	Float bedrollDistance = 0.0
-	; With no furniture SexLab offers every scene; on furniture it knows, only that furniture's.
-	Int anywhereCount = SexLabRegistry.LookupScenes(positions, "", None, 1, None).Length
+	; With no furniture P+ offers every scene; on furniture it knows, only that furniture's. 1.6x
+	; takes only the beds in its own list, which BedTypeOf already keeps to, so it needs no check.
+	Int anywhereCount = 0
+	If !legacySexLab
+		anywhereCount = skyrimnet_BrothelSLP.SceneCount(sexLab, positions, "", 1, None)
+	EndIf
 	Int i = 0
 	While i < found.Length
 		ObjectReference candidate = found[i]
-		Int bedType = BedTypeOf(candidate)
+		Int bedType = BedTypeOf(sexLab, candidate)
 		If bedType > 0
 			Float distance = worker.GetDistance(candidate)
 			Float dz = candidate.GetPositionZ() - worker.GetPositionZ()
@@ -622,15 +645,15 @@ ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] p
 			If logging
 				DebugLog("  " + candidate.GetDisplayName() + " [" + candidate.GetFormID() + "] " \
 					+ PO3_SKSEFunctions.GetFormEditorID(candidate.GetBaseObject()) + " type=" + bedType \
-					+ " sexLabBed=" + sslThreadLibrary.IsBed(candidate) \
+					+ " sexLabBed=" + IsSexLabBed(sexLab, candidate) \
 					+ " dist=" + (distance as Int) + " dz=" + (dz as Int) \
 					+ " sameCell=" + (candidate.GetParentCell() == brothelCell) + " takenByPair=" + (dealBeds.Find(candidate) >= 0) \
 					+ " available=" + sexLab.IsBedAvailable(candidate) + " usable=" + usable)
 			EndIf
-			If usable && ((bedType == BedTypeBedroll && (!bedroll || distance < bedrollDistance)) \
+			If usable && !legacySexLab && ((bedType == BedTypeBedroll && (!bedroll || distance < bedrollDistance)) \
 					|| (bedType != BedTypeBedroll && (!bed || distance < bedDistance)))
 				; Only a candidate that would be chosen is checked, as the lookup takes a moment.
-				Int onBedCount = SexLabRegistry.LookupScenes(positions, "", None, 2, candidate).Length
+				Int onBedCount = skyrimnet_BrothelSLP.SceneCount(sexLab, positions, "", 2, candidate)
 				If onBedCount == 0 || onBedCount >= anywhereCount
 					usable = False
 				EndIf
@@ -669,8 +692,12 @@ EndFunction
 ; whose editor ID names one counts as a single bed. Whether SexLab really plays bed animations on it
 ; is checked separately in PickBed: on furniture it does not know (CommonBed01L, for one) it picks
 ; standing animations, plays them at the furniture's origin, and the bed pushes the pair apart.
-Int Function BedTypeOf(ObjectReference ref)
-	Int bedType = sslThreadLibrary.GetBedTypeImpl(ref)
+; Under 1.6x, which has no such check, only the beds in SexLab's own list count.
+Int Function BedTypeOf(SexLabFramework sexLab, ObjectReference ref)
+	If legacySexLab
+		Return skyrimnet_BrothelSL16.BedType(sexLab, ref)
+	EndIf
+	Int bedType = skyrimnet_BrothelSLP.BedType(sexLab, ref)
 	If bedType > 0
 		Return bedType
 	EndIf
@@ -1030,7 +1057,7 @@ String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant)
 	While i < tagCount && count < MaxPositionChoices
 		Int index = (start + i) % tagCount
 		String tag = JsonUtil.StringListGet(PositionsFile, "tags", index)
-		If tag != "" && HasScenesFor(positions, tag)
+		If tag != "" && HasScenesFor(sexLab, positions, tag)
 			offered[count] = tag
 			intents[count] = JsonUtil.StringListGet(PositionsFile, "labels", index)
 			If intents[count] == ""
@@ -1062,20 +1089,41 @@ String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant)
 	Return ""
 EndFunction
 
+; ---------------------------------------------------------------------------------------------
+; SexLab P+ or 1.6x: each of these goes to the script for the SexLab installed (see DetectSexLab)
+; ---------------------------------------------------------------------------------------------
+
 ; Whether SexLab has a scene with this tag for the pair, with one sex per position for a man and a
-; woman (see OneSexPositionScenes), anywhere.
-Bool Function HasScenesFor(Actor[] positions, String tag)
-	If OneSexPositionScenes(positions, None, 1, tag).Length > 0
-		Return True
+; woman, anywhere.
+Bool Function HasScenesFor(SexLabFramework sexLab, Actor[] positions, String tag)
+	If legacySexLab
+		Return skyrimnet_BrothelSL16.HasScenesFor(sexLab, positions, tag)
 	EndIf
-	Return SexLabRegistry.LookupScenes(positions, tag, None, 1, None).Length > 0 \
-		&& !IsManAndWoman(positions)
+	Return skyrimnet_BrothelSLP.HasScenesFor(sexLab, positions, tag)
 EndFunction
 
-Bool Function IsManAndWoman(Actor[] positions)
-	Int sexA = SexLabRegistry.GetSex(positions[0], False)
-	Int sexB = SexLabRegistry.GetSex(positions[1], False)
-	Return (sexA == 0 && sexB == 1) || (sexA == 1 && sexB == 0)
+; Whether SexLab has a scene with this tag for the pair at center with this furniture preference.
+Bool Function HasScenes(SexLabFramework sexLab, Actor[] positions, String tag, Int furniturePref, ObjectReference center)
+	If legacySexLab
+		Return skyrimnet_BrothelSL16.HasScenes(sexLab, positions, tag, furniturePref, center)
+	EndIf
+	Return skyrimnet_BrothelSLP.HasScenes(sexLab, positions, tag, furniturePref, center)
+EndFunction
+
+Bool Function IsSexLabBed(SexLabFramework sexLab, ObjectReference ref)
+	If legacySexLab
+		Return skyrimnet_BrothelSL16.IsSexLabBed(sexLab, ref)
+	EndIf
+	Return skyrimnet_BrothelSLP.IsSexLabBed(sexLab, ref)
+EndFunction
+
+; Starts one scene for the pair, a fresh random pick of scenes each call, the tag's if it has any.
+; Returns the SexLab thread's ID, or -1 when SexLab refuses.
+Int Function StartSceneOnce(SexLabFramework sexLab, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag)
+	If legacySexLab
+		Return skyrimnet_BrothelSL16.StartScene(sexLab, positions, center, furniturePref, positionTag, SceneHook)
+	EndIf
+	Return skyrimnet_BrothelSLP.StartScene(sexLab, positions, center, furniturePref, positionTag, SceneHook)
 EndFunction
 
 ; Tells the customer to make his offer now, in his own words, rather than reporting it as made.
@@ -1120,7 +1168,7 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag 
 	If GetModSettingInt("iBedMode:General") == 1
 		center = PickBed(sexLab, worker, positions)
 		; A picked position the bed has no scene for (standing, say) is played off the bed.
-		If center && positionTag != "" && SexLabRegistry.LookupScenes(positions, positionTag, None, 2, center).Length == 0
+		If center && positionTag != "" && !HasScenes(sexLab, positions, positionTag, 2, center)
 			center = None
 		EndIf
 		dealBeds[slot] = center
@@ -1156,29 +1204,29 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag 
 	; SexLab gives up on a scene whose animation the game cannot play (a pack missing from the
 	; generated behaviour files): it accepts the scene, then restores the pair a few seconds later
 	; with no end hook. Such a scene is tried again, with other scenes, up to SceneAttempts times.
-	SexLabThread thread
+	Int threadID = -1
 	Int attempt = 0
 	Bool playing = False
 	While attempt < SceneAttempts && !playing
-		thread = StartSceneOnce(sexLab, positions, center, furniturePref, positionTag)
-		If thread
+		threadID = StartSceneOnce(sexLab, positions, center, furniturePref, positionTag)
+		If threadID >= 0
 			Utility.Wait(SceneCheckSeconds)
 			playing = sexLab.IsActorActive(positions[0]) || sexLab.IsActorActive(positions[1])
 		EndIf
 		If GetModSettingBool("bDebugLog:General")
-			DebugLog("Scene for " + worker.GetDisplayName() + " and " + positions[1].GetDisplayName() + ", try " + (attempt + 1) \
-				+ ": started=" + (thread != None) + " playing=" + playing)
+			DebugLog("Scene (SexLab " + SexLabName() + ") for " + worker.GetDisplayName() + " and " + positions[1].GetDisplayName() \
+				+ ", try " + (attempt + 1) + ": started=" + (threadID >= 0) + " playing=" + playing)
 		EndIf
-		If !thread
+		If threadID < 0
 			attempt = SceneAttempts
 		Else
 			attempt += 1
 		EndIf
 	EndWhile
 	If !playing
-		thread = None
+		threadID = -1
 	EndIf
-	If !thread
+	If threadID < 0
 		; A player moved onto the bed would otherwise be left lying there.
 		If worker == player || positions[1] == player
 			Debug.SendAnimationEvent(player, "IdleForceDefaultState")
@@ -1190,7 +1238,7 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag 
 		ReleaseDeal(slot)
 		Return
 	EndIf
-	dealThreads[slot] = thread.GetThreadID()
+	dealThreads[slot] = threadID
 	dealStates[slot] = DealInScene
 	dealStarted[slot] = Utility.GetCurrentRealTime()
 EndFunction
@@ -1198,58 +1246,6 @@ EndFunction
 Int Property SceneAttempts = 3 AutoReadOnly
 ; How long after the start a scene must still be running to count as playing.
 Float Property SceneCheckSeconds = 6.0 AutoReadOnly
-
-; Starts one scene for the pair: one of up to SceneChoices one-sex-position scenes (a fresh random
-; pick each call), else any scene with the tag, else any scene. None when SexLab refuses.
-SexLabThread Function StartSceneOnce(SexLabFramework sexLab, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag)
-	String[] scenes = OneSexPositionScenes(positions, center, furniturePref, positionTag)
-	SexLabThread thread
-	If scenes.Length > 0
-		thread = sexLab.StartSceneEx(positions, scenes, None, "", center, furniturePref, SceneHook)
-	Else
-		thread = sexLab.StartScene(positions, positionTag, None, center, furniturePref, SceneHook)
-		If !thread && positionTag != ""
-			thread = sexLab.StartScene(positions, "", None, center, furniturePref, SceneHook)
-		EndIf
-	EndIf
-	Return thread
-EndFunction
-
-; SexLab puts an actor in any position whose sexes include the actor's, and many scenes have a
-; position that takes either sex, so the man could get the woman's part. For a man and a woman this
-; returns up to SceneChoices scenes, checked from a random start, in which one position takes only
-; women and the other only men; none for other pairs or when no such scene is found.
-String[] Function OneSexPositionScenes(Actor[] positions, ObjectReference center, Int furniturePref, String tag = "")
-	String[] picked
-	If !IsManAndWoman(positions)
-		Return picked
-	EndIf
-	String[] found = SexLabRegistry.LookupScenes(positions, tag, None, furniturePref, center)
-	If found.Length == 0
-		Return picked
-	EndIf
-	picked = new String[10]
-	Int count = 0
-	Int checks = found.Length
-	If checks > SceneChecks
-		checks = SceneChecks
-	EndIf
-	Int index = Utility.RandomInt(0, found.Length - 1)
-	While checks > 0 && count < SceneChoices
-		Int[] sexes = SexLabRegistry.GetPositionSexA(found[index])
-		If sexes.Length == 2
-			Int a = Math.LogicalAnd(sexes[0], 0x3)
-			Int b = Math.LogicalAnd(sexes[1], 0x3)
-			If (a == 0x1 && b == 0x2) || (a == 0x2 && b == 0x1)
-				picked[count] = found[index]
-				count += 1
-			EndIf
-		EndIf
-		index = (index + 1) % found.Length
-		checks -= 1
-	EndWhile
-	Return Utility.ResizeStringArray(picked, count)
-EndFunction
 
 ; "<customer> is approaching <worker>." Translation files cannot hold a sentence with names in it,
 ; and alias text replacement in the message showed "[...]" in play, so the words around the names

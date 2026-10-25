@@ -1,8 +1,13 @@
-# SkyrimNet Brothel 0.1.5
+# SkyrimNet Brothel 0.1.6
 
 Run your own brothel. Make any interior your brothel, register women (followers or anyone else) as
 workers, and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the
-worker's answer, SexLab P+ plays the scene, and the worker is paid when it ends.
+worker's answer, SexLab plays the scene, and the worker is paid when it ends.
+
+> **SexLab 1.6x support is untested.** Since 0.1.6 the mod also runs on classic SexLab 1.6x
+> (written against 1.66b), but that support has **not been tested in game on 1.6x**: it was only
+> written to work in theory and compiled. Everything was tested on SexLab P+ only. See
+> [SexLab 1.6x (untested)](#sexlab-16x-untested) below, and please report what you find.
 
 ## Requirements
 
@@ -12,7 +17,7 @@ worker's answer, SexLab P+ plays the scene, and the worker is paid when it ends.
 | [SKSE64](https://skse.silverlock.org/) | |
 | [SkyrimNet](https://github.com/MinLL/SkyrimNet-GamePlugin) **beta 28 or later** | Uses its Papyrus API: DirectNarration, RegisterAction, speech queue functions. |
 | [SkyrimNet Player Choices](https://github.com/nightlantern-mods/SkyrimNet_PlayerChoices) **0.0.1 or later** | **Required since 0.1.5.** Gives you AI-written lines to choose from when you take a customer yourself (accept, refuse, which position). |
-| SexLab P+ (SexLab Framework PPLUS) | Uses the P+ scene API (`StartScene`, local hooks). Classic SexLab 1.6x is not supported. |
+| SexLab P+ (SexLab Framework PPLUS) **or** SexLab 1.6x | Tested on P+ 2.18.1. On P+ it uses the P+ scene API (`StartScene`, scene IDs). SexLab 1.6x (1.66b) is supported since 0.1.6 but **untested** (see below). |
 | [SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604) | |
 | [MCM Helper](https://www.nexusmods.com/skyrimspecialedition/mods/53000) | The settings menu. |
 | [PapyrusUtil SE](https://www.nexusmods.com/skyrimspecialedition/mods/13048) | Moves the customer with a package override; reads the position list. |
@@ -108,6 +113,33 @@ use them, and only while she owes an answer:
 - Loading a save clears any deal that got stuck; a watchdog also clears stalled ones after a few
   minutes.
 
+## SexLab 1.6x (untested)
+
+**This support has not been tested in game.** The author plays on SexLab P+ only, so the 1.6x
+code was written from SexLab 1.66b's script sources and checked only by compiling it. It should
+work, but expect rough edges; bug reports from 1.6x players are welcome.
+
+The mod finds out which SexLab is installed each time a save loads (`SexLabUtil.GetVersion()`:
+1.6x reports its own version, 16601 for 1.66b) and then uses that SexLab's API. The P+ and 1.6x
+calls live in separate scripts (`skyrimnet_BrothelSLP` and `skyrimnet_BrothelSL16`), so neither
+needs the other SexLab installed. With *Debug log* on, the log says which one is in use.
+
+How 1.6x differs from P+:
+
+- Scenes are started with `StartSex` and a list of up to 10 animations picked at random among
+  those that fit the pair: as many male and female positions as the pair has men and women, not
+  aggressive, no special furniture, and, on a bed, none tagged `NoBed` or `Standing` (off a bed,
+  none tagged `BedOnly`). With none found, SexLab picks its own.
+- Only the beds in SexLab 1.6x's own bed list are used. `SKSE/SexLab/Furniture/skyrimnet_brothel_commonbeds.yaml`
+  is a P+ file and 1.6x ignores it, so beds 1.6x does not list (Skyrim's common beds, for one) are
+  passed over and the scene plays where the pair stands.
+- With *Beds* set to *Follow SexLab*, or when no free bed is found, SexLab 1.6x's own bed settings
+  decide; it may ask you whether to use a bed when you take a customer yourself.
+- When you take a customer yourself, only the positions in `positions.json` whose tag some
+  installed 1.6x animation carries are offered. Some 1.6x packs tag positions in their own way
+  (`Doggystyle` without `Doggy`, for example), so add your packs' tags to the file if a position
+  you expect is missing.
+
 ## Uninstalling
 
 Close the brothel in the MCM first so the customers are removed, save, then disable the mod.
@@ -116,7 +148,8 @@ Close the brothel in the MCM first so the customers are removed, save, then disa
 
 - `skyrimnet_Brothel.esp`: the quest, the customer NPC, the leveled list of their looks and the
   accept / refuse box for the player.
-- `Scripts/`: the compiled scripts; `Scripts/Source/` has their source.
+- `Scripts/`: the compiled scripts; `Scripts/Source/` has their source. `skyrimnet_BrothelSLP` holds
+  the SexLab P+ calls and `skyrimnet_BrothelSL16` the SexLab 1.6x ones (untested).
 - `MCM/Config/skyrimnet_Brothel/`: the MCM Helper menu.
 - `Interface/Translations/skyrimnet_Brothel_ENGLISH.txt`: the English strings.
 - `SKSE/Plugins/skyrimnet_Brothel/strings.json`: phrases built around names ("X is approaching Y.");
@@ -126,3 +159,4 @@ Close the brothel in the MCM first so the customers are removed, save, then disa
   LLM). Edit, add or remove pairs freely; keep both lists in the same order.
 - `SKSE/SexLab/Furniture/skyrimnet_brothel_commonbeds.yaml`: SexLab P+ furniture entries for
   Skyrim's common single and double beds, which SexLab P+ does not list itself, so scenes use them.
+  SexLab 1.6x does not read it.
