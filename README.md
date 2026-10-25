@@ -1,4 +1,4 @@
-# SkyrimNet Brothel 0.1.4
+# SkyrimNet Brothel 0.1.5
 
 Run your own brothel. Make any interior your brothel, register women (followers or anyone else) as
 workers, and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the
@@ -11,10 +11,11 @@ worker's answer, SexLab P+ plays the scene, and the worker is paid when it ends.
 | Skyrim Special Edition / Anniversary Edition | Built and tested on 1.6.1170. |
 | [SKSE64](https://skse.silverlock.org/) | |
 | [SkyrimNet](https://github.com/MinLL/SkyrimNet-GamePlugin) **beta 28 or later** | Uses its Papyrus API: DirectNarration, RegisterAction, speech queue functions. |
+| [SkyrimNet Player Choices](https://github.com/nightlantern-mods/SkyrimNet_PlayerChoices) **0.0.1 or later** | **Required since 0.1.5.** Gives you AI-written lines to choose from when you take a customer yourself (accept, refuse, which position). |
 | SexLab P+ (SexLab Framework PPLUS) | Uses the P+ scene API (`StartScene`, local hooks). Classic SexLab 1.6x is not supported. |
 | [SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604) | |
 | [MCM Helper](https://www.nexusmods.com/skyrimspecialedition/mods/53000) | The settings menu. |
-| [PapyrusUtil SE](https://www.nexusmods.com/skyrimspecialedition/mods/13048) | Moves the customer with a package override. |
+| [PapyrusUtil SE](https://www.nexusmods.com/skyrimspecialedition/mods/13048) | Moves the customer with a package override; reads the position list. |
 | [powerofthree's Papyrus Extender](https://www.nexusmods.com/skyrimspecialedition/mods/22854) | Links the customer to the worker for that move. |
 
 Any follower framework works (vanilla followers, NFF and others), and workers need not be followers
@@ -49,8 +50,11 @@ one.
    - If she refuses, nothing happens and you are told so.
    - If she gives no clear answer within 60 seconds, the scene starts after the conversation.
 5. **Take a customer yourself.** Press *Take a customer yourself* in the brothel: a customer walks
-   up and makes his offer, then a box asks you to *Accept* or *Refuse*. This never happens
-   automatically.
+   up and makes his offer, and SkyrimNet Player Choices shows you lines to answer with in the
+   dialogue menu, written in your character's voice: accept willingly, accept reluctantly, or
+   refuse. If you accept, he asks what you will do; pick one of the positions offered (only those
+   SexLab has scenes for) or leave it to him, and the scene starts with that position. This never
+   happens automatically.
 6. **Get paid.** When the scene ends the worker receives the payment (50 gold by default) and
    SkyrimNet remembers that the customer paid her.
 
@@ -117,3 +121,8 @@ Close the brothel in the MCM first so the customers are removed, save, then disa
 - `Interface/Translations/skyrimnet_Brothel_ENGLISH.txt`: the English strings.
 - `SKSE/Plugins/skyrimnet_Brothel/strings.json`: phrases built around names ("X is approaching Y.");
   a translation replaces this file too.
+- `SKSE/Plugins/skyrimnet_Brothel/positions.json`: the positions offered when you take a customer
+  yourself: SexLab scene tags (`tags`) and what each choice means (`labels`, English, read by the
+  LLM). Edit, add or remove pairs freely; keep both lists in the same order.
+- `SKSE/SexLab/Furniture/skyrimnet_brothel_commonbeds.yaml`: SexLab P+ furniture entries for
+  Skyrim's common single and double beds, which SexLab P+ does not list itself, so scenes use them.

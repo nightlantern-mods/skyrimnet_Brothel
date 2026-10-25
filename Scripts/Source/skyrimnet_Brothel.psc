@@ -99,6 +99,8 @@ Function Setup()
 	talking = False
 	RegisterKeys()
 	RegisterForModEvent("HookAnimationEnd_" + SceneHook, "OnBrothelSceneEnd")
+	RegisterForModEvent("SNPC_ReplyChosen", "OnSNPCReplyChosen")
+	RegisterForModEvent("SNPC_ConversationEnded", "OnSNPCConversationEnded")
 	RegisterActions()
 	; The count shown in the MCM lives in its settings file, not in the save: another save's count
 	; would show after a load.
@@ -852,6 +854,9 @@ Function ServePlayer()
 		PlayerTrace("stopped: the deal was cleared while waiting to talk")
 		Return
 	EndIf
+	If PlayerChoicesInstalled() && ServePlayerWithChoices(sexLab, slot, serial)
+		Return
+	EndIf
 	Float offeredAt = Utility.GetCurrentRealTime()
 	SkyrimNetApi.DirectNarration(OfferNarration(customer, player), customer, player)
 	WaitForSpeech(offeredAt, slot)
@@ -886,6 +891,193 @@ Function ServePlayer()
 	EndIf
 EndFunction
 
+; ---------------------------------------------------------------------------------------------
+; The player's answers through SkyrimNet Player Choices (optional)
+; ---------------------------------------------------------------------------------------------
+
+; With SkyrimNet Player Choices installed, the player answers the customer in the vanilla dialogue
+; menu with AI-written lines in their own voice: accept, accept reluctantly or refuse; on accepting,
+; the customer asks for a position and the player picks one of the SexLab position tags that have a
+; scene for this pair (positions.json). Without the mod, the player answers in the message box.
+String Property ChoicesTagOffer = "SNB_Offer" AutoReadOnly
+String Property ChoicesTagPosition = "SNB_Position" AutoReadOnly
+String Property PositionsFile = "../skyrimnet_Brothel/positions.json" AutoReadOnly
+Int Property MaxPositionChoices = 4 AutoReadOnly
+; AskPlayer's results besides a choice's index: walked away (-1), no pick, and could not ask.
+Int Property ChoiceLeft = -1 AutoReadOnly
+Int Property ChoiceNone = -2 AutoReadOnly
+Int Property ChoiceUnavailable = -3 AutoReadOnly
+
+; The Player Choices conversation in progress, filled by its mod events.
+String choiceTag
+Int choiceIndex
+Bool choiceEnded
+
+Bool Function PlayerChoicesInstalled()
+	Return Game.GetModByName("SkyrimNet_PlayerChoices.esp") != 255
+EndFunction
+
+Event OnSNPCReplyChosen(Form akNpc, String asTag, Int aiIndex, String asText)
+	If asTag == choiceTag && asTag != ""
+		choiceIndex = aiIndex
+	EndIf
+EndEvent
+
+Event OnSNPCConversationEnded(Form akNpc, String asTag, Int aiReason)
+	If asTag == choiceTag && asTag != ""
+		choiceEnded = True
+	EndIf
+EndEvent
+
+; Runs one Player Choices conversation with the customer and waits until the customer has answered
+; the player's pick. Returns the index of the picked intent, ChoiceLeft, ChoiceNone (the menu closed,
+; the LLM failed, or no answer in three minutes), or ChoiceUnavailable when it could not start.
+Int Function AskPlayer(Actor customer, String theme, String situation, String[] intents, String tag, Int slot)
+	Float waited = 0.0
+	While SNPC_API.IsBusy() && waited < 30.0
+		KeepClose(slot)
+		Utility.Wait(0.5)
+		waited += 0.5
+	EndWhile
+	choiceTag = tag
+	choiceIndex = ChoiceNone
+	choiceEnded = False
+	If !SNPC_API.NpcTalksToPlayerWithChoices(customer, theme, situation, intents, tag)
+		choiceTag = ""
+		Return ChoiceUnavailable
+	EndIf
+	waited = 0.0
+	While !choiceEnded && waited < 180.0
+		Utility.Wait(0.5)
+		waited += 0.5
+	EndWhile
+	choiceTag = ""
+	Return choiceIndex
+EndFunction
+
+; ServePlayer's answer and scene through Player Choices. False when Player Choices could not take
+; the offer at all, so the message box takes over; True when the deal has been dealt with here.
+Bool Function ServePlayerWithChoices(SexLabFramework sexLab, Int slot, Int serial)
+	Actor player = Game.GetPlayer()
+	Actor customer = dealCustomers[slot]
+	Int payment = GetModSettingInt("iPayment:General")
+	String[] answers = new String[3]
+	answers[0] = "accept the offer willingly"
+	answers[1] = "accept the offer, but reluctantly"
+	answers[2] = "refuse the offer"
+	PlayerTrace("asking through Player Choices")
+	Int answer = AskPlayer(customer, "a paid offer: " + customer.GetDisplayName() + " wants " + player.GetDisplayName() \
+		+ "'s company tonight for " + payment + " gold", OfferNarration(customer, player), answers, ChoicesTagOffer, slot)
+	If answer == ChoiceUnavailable
+		PlayerTrace("Player Choices could not start; using the message box")
+		Return False
+	EndIf
+	If !DealAlive(slot, serial)
+		ReleaseTalk()
+		Return True
+	EndIf
+	If answer != 0 && answer != 1
+		SkyrimNetApi.RegisterPersistentEvent(player.GetDisplayName() + " turned down " + customer.GetDisplayName() + "'s offer.", player, customer)
+		Debug.Notification("$SNB_PlayerRefused")
+		ReleaseTalk()
+		ReleaseDeal(slot)
+		Return True
+	EndIf
+	String how = ""
+	If answer == 1
+		how = " reluctantly"
+	EndIf
+	SkyrimNetApi.RegisterPersistentEvent(player.GetDisplayName() + how + " accepted " + customer.GetDisplayName() + "'s offer.", player, customer)
+	dealStates[slot] = DealAccepted
+
+	String positionTag = AskPosition(sexLab, slot, answer == 1)
+	ReleaseTalk()
+	If positionTag == "-"
+		; Walked away when asked: the deal is off after all.
+		SkyrimNetApi.RegisterPersistentEvent(player.GetDisplayName() + " changed their mind and left " + customer.GetDisplayName() + ".", player, customer)
+		Debug.Notification("$SNB_PlayerRefused")
+		ReleaseDeal(slot)
+		Return True
+	EndIf
+	Utility.Wait(1.0)
+	If DealAlive(slot, serial)
+		StartBrothelScene(sexLab, slot, positionTag)
+	Else
+		PlayerTrace("stopped: the deal was cleared after accepting")
+	EndIf
+	Return True
+EndFunction
+
+; The customer asks which position the player wants. Offers up to MaxPositionChoices of the
+; positions.json tags that have a scene for this pair, in random order, and "leave it to you".
+; Returns the picked tag, "" for the customer's choice (or nothing usable), "-" when the player
+; walked away.
+String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant)
+	Actor player = Game.GetPlayer()
+	Actor customer = dealCustomers[slot]
+	Actor[] positions = new Actor[2]
+	positions[0] = player
+	positions[1] = customer
+	Int tagCount = JsonUtil.StringListCount(PositionsFile, "tags")
+	If tagCount <= 0
+		Return ""
+	EndIf
+	String[] offered = Utility.CreateStringArray(MaxPositionChoices)
+	String[] intents = Utility.CreateStringArray(MaxPositionChoices + 1)
+	Int count = 0
+	Int start = Utility.RandomInt(0, tagCount - 1)
+	Int i = 0
+	While i < tagCount && count < MaxPositionChoices
+		Int index = (start + i) % tagCount
+		String tag = JsonUtil.StringListGet(PositionsFile, "tags", index)
+		If tag != "" && HasScenesFor(positions, tag)
+			offered[count] = tag
+			intents[count] = JsonUtil.StringListGet(PositionsFile, "labels", index)
+			If intents[count] == ""
+				intents[count] = "ask for " + tag
+			EndIf
+			count += 1
+		EndIf
+		i += 1
+	EndWhile
+	If count == 0
+		Return ""
+	EndIf
+	intents[count] = "leave the choice to the customer"
+	intents = Utility.ResizeStringArray(intents, count + 1)
+	String mood = "willingly"
+	If reluctant
+		mood = "reluctantly"
+	EndIf
+	Int picked = AskPlayer(customer, "the customer asks which position " + player.GetDisplayName() + " would like tonight", \
+		player.GetDisplayName() + " has just " + mood + " agreed to spend the night with " + customer.GetDisplayName() \
+		+ " for gold. Before they go to bed, " + customer.GetDisplayName() + " asks " + player.GetDisplayName() \
+		+ " what they would like to do, and keeps it short.", intents, ChoicesTagPosition, slot)
+	If picked == ChoiceLeft
+		Return "-"
+	ElseIf picked >= 0 && picked < count
+		PlayerTrace("position " + offered[picked])
+		Return offered[picked]
+	EndIf
+	Return ""
+EndFunction
+
+; Whether SexLab has a scene with this tag for the pair, with one sex per position for a man and a
+; woman (see OneSexPositionScenes), anywhere.
+Bool Function HasScenesFor(Actor[] positions, String tag)
+	If OneSexPositionScenes(positions, None, 1, tag).Length > 0
+		Return True
+	EndIf
+	Return SexLabRegistry.LookupScenes(positions, tag, None, 1, None).Length > 0 \
+		&& !IsManAndWoman(positions)
+EndFunction
+
+Bool Function IsManAndWoman(Actor[] positions)
+	Int sexA = SexLabRegistry.GetSex(positions[0], False)
+	Int sexB = SexLabRegistry.GetSex(positions[1], False)
+	Return (sexA == 0 && sexB == 1) || (sexA == 1 && sexB == 0)
+EndFunction
+
 ; Tells the customer to make his offer now, in his own words, rather than reporting it as made.
 String Function OfferNarration(Actor customer, Actor worker)
 	String pronoun = "his"
@@ -917,7 +1109,8 @@ EndFunction
 ; Bed mode "always": the nearest free bed in the brothel is the scene's centre, which also makes
 ; SexLab pick bed animations. With no free bed (or bed mode "follow SexLab") the scene starts where
 ; the worker stands, unless another pair is already there: then at the spot the customer came from.
-Function StartBrothelScene(SexLabFramework sexLab, Int slot)
+; positionTag: a SexLab tag the player picked (Player Choices); "" for any scene.
+Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag = "")
 	Actor worker = dealWorkers[slot]
 	Actor[] positions = new Actor[2]
 	positions[0] = worker
@@ -926,8 +1119,18 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot)
 	Int furniturePref = 1
 	If GetModSettingInt("iBedMode:General") == 1
 		center = PickBed(sexLab, worker, positions)
+		; A picked position the bed has no scene for (standing, say) is played off the bed.
+		If center && positionTag != "" && SexLabRegistry.LookupScenes(positions, positionTag, None, 2, center).Length == 0
+			center = None
+		EndIf
 		dealBeds[slot] = center
-		furniturePref = 2
+		If center
+			furniturePref = 2
+		Else
+			; No free bed for this pair. Allowed furniture, SexLab looks for a bed itself and takes the
+			; one another pair is on (its IsBedAvailable says yes to a bed in use).
+			furniturePref = 0
+		EndIf
 	EndIf
 	If !center && !ClearOfOtherScenes(worker, slot) && dealSpots[slot]
 		center = dealSpots[slot]
@@ -950,16 +1153,30 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot)
 		positions[1].MoveTo(center, 40.0, 0.0, 0.0)
 		worker.MoveTo(center)
 	EndIf
-	String[] scenes = OneSexPositionScenes(positions, center, furniturePref)
+	; SexLab gives up on a scene whose animation the game cannot play (a pack missing from the
+	; generated behaviour files): it accepts the scene, then restores the pair a few seconds later
+	; with no end hook. Such a scene is tried again, with other scenes, up to SceneAttempts times.
 	SexLabThread thread
-	If scenes.Length > 0
-		thread = sexLab.StartSceneEx(positions, scenes, None, "", center, furniturePref, SceneHook)
-	Else
-		thread = sexLab.StartScene(positions, "", None, center, furniturePref, SceneHook)
-	EndIf
-	If GetModSettingBool("bDebugLog:General")
-		DebugLog("Scene for " + worker.GetDisplayName() + " and " + positions[1].GetDisplayName() + ": " \
-			+ scenes.Length + " one-sex-position scenes, started=" + (thread != None))
+	Int attempt = 0
+	Bool playing = False
+	While attempt < SceneAttempts && !playing
+		thread = StartSceneOnce(sexLab, positions, center, furniturePref, positionTag)
+		If thread
+			Utility.Wait(SceneCheckSeconds)
+			playing = sexLab.IsActorActive(positions[0]) || sexLab.IsActorActive(positions[1])
+		EndIf
+		If GetModSettingBool("bDebugLog:General")
+			DebugLog("Scene for " + worker.GetDisplayName() + " and " + positions[1].GetDisplayName() + ", try " + (attempt + 1) \
+				+ ": started=" + (thread != None) + " playing=" + playing)
+		EndIf
+		If !thread
+			attempt = SceneAttempts
+		Else
+			attempt += 1
+		EndIf
+	EndWhile
+	If !playing
+		thread = None
 	EndIf
 	If !thread
 		; A player moved onto the bed would otherwise be left lying there.
@@ -978,18 +1195,36 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot)
 	dealStarted[slot] = Utility.GetCurrentRealTime()
 EndFunction
 
+Int Property SceneAttempts = 3 AutoReadOnly
+; How long after the start a scene must still be running to count as playing.
+Float Property SceneCheckSeconds = 6.0 AutoReadOnly
+
+; Starts one scene for the pair: one of up to SceneChoices one-sex-position scenes (a fresh random
+; pick each call), else any scene with the tag, else any scene. None when SexLab refuses.
+SexLabThread Function StartSceneOnce(SexLabFramework sexLab, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag)
+	String[] scenes = OneSexPositionScenes(positions, center, furniturePref, positionTag)
+	SexLabThread thread
+	If scenes.Length > 0
+		thread = sexLab.StartSceneEx(positions, scenes, None, "", center, furniturePref, SceneHook)
+	Else
+		thread = sexLab.StartScene(positions, positionTag, None, center, furniturePref, SceneHook)
+		If !thread && positionTag != ""
+			thread = sexLab.StartScene(positions, "", None, center, furniturePref, SceneHook)
+		EndIf
+	EndIf
+	Return thread
+EndFunction
+
 ; SexLab puts an actor in any position whose sexes include the actor's, and many scenes have a
 ; position that takes either sex, so the man could get the woman's part. For a man and a woman this
 ; returns up to SceneChoices scenes, checked from a random start, in which one position takes only
 ; women and the other only men; none for other pairs or when no such scene is found.
-String[] Function OneSexPositionScenes(Actor[] positions, ObjectReference center, Int furniturePref)
+String[] Function OneSexPositionScenes(Actor[] positions, ObjectReference center, Int furniturePref, String tag = "")
 	String[] picked
-	Int sexA = SexLabRegistry.GetSex(positions[0], False)
-	Int sexB = SexLabRegistry.GetSex(positions[1], False)
-	If !((sexA == 0 && sexB == 1) || (sexA == 1 && sexB == 0))
+	If !IsManAndWoman(positions)
 		Return picked
 	EndIf
-	String[] found = SexLabRegistry.LookupScenes(positions, "", None, furniturePref, center)
+	String[] found = SexLabRegistry.LookupScenes(positions, tag, None, furniturePref, center)
 	If found.Length == 0
 		Return picked
 	EndIf
