@@ -4,6 +4,17 @@
     "approachBetween": " is approaching ",
     "approachAfter": ".",
     "approachYouBefore": "",
-    "approachYouAfter": " is approaching you."
+    "approachYouAfter": " is approaching you.",
+    "visitorBefore": "",
+    "visitorAfter": " has come to the brothel.",
+    "recommendTopic": "(Introduce one of the girls)",
+    "ownerCutBefore": "The house's share: ",
+    "ownerCutAfter": " gold.",
+    "solicitTopic": "(Offer your company)",
+    "workerLevelBefore": "",
+    "workerLevelMid": " is now level ",
+    "workerLevelAfter": " as a worker.",
+    "brothelLevelBefore": "The brothel is now level ",
+    "brothelLevelAfter": "."
   }
 }

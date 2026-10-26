@@ -3,237 +3,599 @@
 	"displayName": "$SNB_ModName",
 	"minMcmVersion": 9,
 	"cursorFillMode": "topToBottom",
-	"content": [
+	"pages": [
 		{
-			"type": "header",
-			"text": "$SNB_HeaderBrothel"
+			"pageDisplayName": "$SNB_PageBrothel",
+			"content": [
+				{
+					"type": "header",
+					"text": "$SNB_HeaderBrothel"
+				},
+				{
+					"id": "sBrothelName:General",
+					"type": "text",
+					"text": "$SNB_CurrentBrothel",
+					"help": "$SNB_CurrentBrothelHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"type": "text",
+					"text": "$SNB_Designate",
+					"help": "$SNB_DesignateHelp",
+					"action": {
+						"type": "CallFunction",
+						"function": "DesignateBrothel"
+					}
+				},
+				{
+					"type": "text",
+					"text": "$SNB_Clear",
+					"help": "$SNB_ClearHelp",
+					"action": {
+						"type": "CallFunction",
+						"function": "ClearBrothel"
+					}
+				},
+				{
+					"id": "iCustomerCount:General",
+					"type": "slider",
+					"text": "$SNB_CustomerCount",
+					"help": "$SNB_CustomerCountHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 10,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "bLocalCustomers:General",
+					"type": "toggle",
+					"text": "$SNB_LocalCustomers",
+					"help": "$SNB_LocalCustomersHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "bAllowSameSex:General",
+					"type": "toggle",
+					"text": "$SNB_AllowSameSex",
+					"help": "$SNB_AllowSameSexHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iMaxConcurrent:General",
+					"type": "slider",
+					"text": "$SNB_MaxConcurrent",
+					"help": "$SNB_MaxConcurrentHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 5,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderPayment"
+				},
+				{
+					"id": "iPayment:General",
+					"type": "slider",
+					"text": "$SNB_Payment",
+					"help": "$SNB_PaymentHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 1000,
+						"step": 10,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderBrothelLevel"
+				},
+				{
+					"id": "sBrothelLevel:General",
+					"type": "text",
+					"text": "$SNB_BrothelLevel",
+					"help": "$SNB_BrothelLevelHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sBrothelNext:General",
+					"type": "text",
+					"text": "$SNB_BrothelNext",
+					"help": "$SNB_BrothelNextHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "iBrothelLevelGold:General",
+					"type": "slider",
+					"text": "$SNB_BrothelLevelGold",
+					"help": "$SNB_BrothelLevelGoldHelp",
+					"valueOptions": {
+						"min": 100,
+						"max": 10000,
+						"step": 100,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				}
+			]
 		},
 		{
-			"id": "sBrothelName:General",
-			"type": "text",
-			"text": "$SNB_CurrentBrothel",
-			"help": "$SNB_CurrentBrothelHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingString"
-			}
+			"pageDisplayName": "$SNB_PageWorkers",
+			"content": [
+				{
+					"type": "header",
+					"text": "$SNB_HeaderWorkers"
+				},
+				{
+					"id": "sWorkerCount:General",
+					"type": "text",
+					"text": "$SNB_WorkerCount",
+					"help": "$SNB_WorkerCountHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sWorkerPick:General",
+					"type": "menu",
+					"text": "$SNB_WorkerList",
+					"help": "$SNB_WorkerListHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString",
+						"options": [
+							"$SNB_None"
+						]
+					}
+				},
+				{
+					"type": "text",
+					"text": "$SNB_UnregisterPicked",
+					"help": "$SNB_UnregisterPickedHelp",
+					"action": {
+						"type": "CallFunction",
+						"function": "UnregisterPickedWorker"
+					}
+				},
+				{
+					"id": "sPickedLevel:General",
+					"type": "text",
+					"text": "$SNB_PickedLevel",
+					"help": "$SNB_PickedLevelHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sPickedNext:General",
+					"type": "text",
+					"text": "$SNB_PickedNext",
+					"help": "$SNB_PickedNextHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderAnswer"
+				},
+				{
+					"id": "bAlwaysAccept:General",
+					"type": "toggle",
+					"text": "$SNB_AlwaysAccept",
+					"help": "$SNB_AlwaysAcceptHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "bAllowRefuse:General",
+					"type": "toggle",
+					"text": "$SNB_AllowRefuse",
+					"help": "$SNB_AllowRefuseHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iBedMode:General",
+					"type": "enum",
+					"text": "$SNB_BedMode",
+					"help": "$SNB_BedModeHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"$SNB_BedFollowSexLab",
+							"$SNB_BedAlways"
+						]
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderSolicit"
+				},
+				{
+					"id": "bWorkerSolicit:General",
+					"type": "toggle",
+					"text": "$SNB_WorkerSolicit",
+					"help": "$SNB_WorkerSolicitHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iSolicitInterval:General",
+					"type": "slider",
+					"text": "$SNB_SolicitInterval",
+					"help": "$SNB_SolicitIntervalHelp",
+					"valueOptions": {
+						"min": 10,
+						"max": 1800,
+						"step": 10,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderWorkerLevel"
+				},
+				{
+					"id": "iWorkerLevelGold:General",
+					"type": "slider",
+					"text": "$SNB_WorkerLevelGold",
+					"help": "$SNB_WorkerLevelGoldHelp",
+					"valueOptions": {
+						"min": 50,
+						"max": 5000,
+						"step": 50,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				}
+			]
 		},
 		{
-			"type": "text",
-			"text": "$SNB_Designate",
-			"help": "$SNB_DesignateHelp",
-			"action": {
-				"type": "CallFunction",
-				"function": "DesignateBrothel"
-			}
+			"pageDisplayName": "$SNB_PagePlayer",
+			"content": [
+				{
+					"type": "header",
+					"text": "$SNB_HeaderPlayer"
+				},
+				{
+					"id": "bPlayerWorks:General",
+					"type": "toggle",
+					"text": "$SNB_PlayerWorks",
+					"help": "$SNB_PlayerWorksHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "bAutoIncludePlayer:General",
+					"type": "toggle",
+					"text": "$SNB_AutoIncludePlayer",
+					"help": "$SNB_AutoIncludePlayerHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "sPlayerLevel:General",
+					"type": "text",
+					"text": "$SNB_PlayerLevel",
+					"help": "$SNB_PlayerLevelHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sPlayerNext:General",
+					"type": "text",
+					"text": "$SNB_PlayerNext",
+					"help": "$SNB_PlayerNextHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderKeys"
+				},
+				{
+					"id": "iServeKey:General",
+					"type": "keymap",
+					"text": "$SNB_ServeKey",
+					"help": "$SNB_ServeKeyHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iRegisterKey:General",
+					"type": "keymap",
+					"text": "$SNB_RegisterKey",
+					"help": "$SNB_RegisterKeyHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iPlayerServeKey:General",
+					"type": "keymap",
+					"text": "$SNB_PlayerServeKey",
+					"help": "$SNB_PlayerServeKeyHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt"
+					}
+				}
+			]
 		},
 		{
-			"type": "text",
-			"text": "$SNB_Clear",
-			"help": "$SNB_ClearHelp",
-			"action": {
-				"type": "CallFunction",
-				"function": "ClearBrothel"
-			}
+			"pageDisplayName": "$SNB_PageAuto",
+			"content": [
+				{
+					"type": "header",
+					"text": "$SNB_HeaderAuto"
+				},
+				{
+					"id": "bAutoServe:General",
+					"type": "toggle",
+					"text": "$SNB_AutoServe",
+					"help": "$SNB_AutoServeHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iAutoInterval:General",
+					"type": "slider",
+					"text": "$SNB_AutoInterval",
+					"help": "$SNB_AutoIntervalHelp",
+					"valueOptions": {
+						"min": 10,
+						"max": 1800,
+						"step": 10,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderVisitors"
+				},
+				{
+					"id": "bVisitors:General",
+					"type": "toggle",
+					"text": "$SNB_Visitors",
+					"help": "$SNB_VisitorsHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iVisitorSex:General",
+					"type": "enum",
+					"text": "$SNB_VisitorSex",
+					"help": "$SNB_VisitorSexHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"$SNB_VisitorMen",
+							"$SNB_VisitorWomen",
+							"$SNB_VisitorBoth"
+						]
+					}
+				},
+				{
+					"id": "iVisitStart:General",
+					"type": "slider",
+					"text": "$SNB_VisitStart",
+					"help": "$SNB_VisitStartHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 23,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iVisitEnd:General",
+					"type": "slider",
+					"text": "$SNB_VisitEnd",
+					"help": "$SNB_VisitEndHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 23,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iMaxVisitors:General",
+					"type": "slider",
+					"text": "$SNB_MaxVisitors",
+					"help": "$SNB_MaxVisitorsHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 5,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iVisitStay:General",
+					"type": "slider",
+					"text": "$SNB_VisitStay",
+					"help": "$SNB_VisitStayHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 12,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "sVisitorPool:General",
+					"type": "text",
+					"text": "$SNB_VisitorPool",
+					"help": "$SNB_VisitorPoolHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				}
+			]
 		},
 		{
-			"id": "iCustomerCount:General",
-			"type": "slider",
-			"text": "$SNB_CustomerCount",
-			"help": "$SNB_CustomerCountHelp",
-			"valueOptions": {
-				"min": 1,
-				"max": 10,
-				"step": 1,
-				"formatString": "{0}",
-				"sourceType": "ModSettingInt"
-			}
+			"pageDisplayName": "$SNB_PageOwner",
+			"content": [
+				{
+					"type": "header",
+					"text": "$SNB_HeaderOwner"
+				},
+				{
+					"id": "sOwnerName:General",
+					"type": "text",
+					"text": "$SNB_OwnerName",
+					"help": "$SNB_OwnerNameHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sOwnerPick:General",
+					"type": "menu",
+					"text": "$SNB_OwnerPick",
+					"help": "$SNB_OwnerPickHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString",
+						"options": [
+							"$SNB_None"
+						]
+					}
+				},
+				{
+					"id": "iOwnerShare:General",
+					"type": "slider",
+					"text": "$SNB_OwnerShare",
+					"help": "$SNB_OwnerShareHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 100,
+						"step": 5,
+						"formatString": "{0}%",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iOwnerInterval:General",
+					"type": "slider",
+					"text": "$SNB_OwnerInterval",
+					"help": "$SNB_OwnerIntervalHelp",
+					"valueOptions": {
+						"min": 10,
+						"max": 1800,
+						"step": 10,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				}
+			]
 		},
 		{
-			"id": "bLocalCustomers:General",
-			"type": "toggle",
-			"text": "$SNB_LocalCustomers",
-			"help": "$SNB_LocalCustomersHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingBool"
-			}
-		},
-		{
-			"id": "bAllowSameSex:General",
-			"type": "toggle",
-			"text": "$SNB_AllowSameSex",
-			"help": "$SNB_AllowSameSexHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingBool"
-			}
-		},
-		{
-			"id": "iMaxConcurrent:General",
-			"type": "slider",
-			"text": "$SNB_MaxConcurrent",
-			"help": "$SNB_MaxConcurrentHelp",
-			"valueOptions": {
-				"min": 1,
-				"max": 5,
-				"step": 1,
-				"formatString": "{0}",
-				"sourceType": "ModSettingInt"
-			}
-		},
-		{
-			"type": "header",
-			"text": "$SNB_HeaderWorkers"
-		},
-		{
-			"id": "sWorkerCount:General",
-			"type": "text",
-			"text": "$SNB_WorkerCount",
-			"help": "$SNB_WorkerCountHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingString"
-			}
-		},
-		{
-			"id": "iWorkerPick:General",
-			"type": "menu",
-			"text": "$SNB_WorkerList",
-			"help": "$SNB_WorkerListHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingInt",
-				"options": [
-					"$SNB_None"
-				]
-			}
-		},
-		{
-			"type": "text",
-			"text": "$SNB_UnregisterPicked",
-			"help": "$SNB_UnregisterPickedHelp",
-			"action": {
-				"type": "CallFunction",
-				"function": "UnregisterPickedWorker"
-			}
-		},
-		{
-			"type": "header",
-			"text": "$SNB_HeaderAnswer"
-		},
-		{
-			"id": "bAlwaysAccept:General",
-			"type": "toggle",
-			"text": "$SNB_AlwaysAccept",
-			"help": "$SNB_AlwaysAcceptHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingBool"
-			}
-		},
-		{
-			"id": "bAllowRefuse:General",
-			"type": "toggle",
-			"text": "$SNB_AllowRefuse",
-			"help": "$SNB_AllowRefuseHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingBool"
-			}
-		},
-		{
-			"id": "iBedMode:General",
-			"type": "enum",
-			"text": "$SNB_BedMode",
-			"help": "$SNB_BedModeHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingInt",
-				"options": [
-					"$SNB_BedFollowSexLab",
-					"$SNB_BedAlways"
-				]
-			}
-		},
-		{
-			"type": "header",
-			"text": "$SNB_HeaderKeys"
-		},
-		{
-			"id": "iServeKey:General",
-			"type": "keymap",
-			"text": "$SNB_ServeKey",
-			"help": "$SNB_ServeKeyHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingInt"
-			}
-		},
-		{
-			"id": "iRegisterKey:General",
-			"type": "keymap",
-			"text": "$SNB_RegisterKey",
-			"help": "$SNB_RegisterKeyHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingInt"
-			}
-		},
-		{
-			"id": "iPlayerServeKey:General",
-			"type": "keymap",
-			"text": "$SNB_PlayerServeKey",
-			"help": "$SNB_PlayerServeKeyHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingInt"
-			}
-		},
-		{
-			"type": "header",
-			"text": "$SNB_HeaderAuto"
-		},
-		{
-			"id": "bAutoServe:General",
-			"type": "toggle",
-			"text": "$SNB_AutoServe",
-			"help": "$SNB_AutoServeHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingBool"
-			}
-		},
-		{
-			"id": "iAutoInterval:General",
-			"type": "slider",
-			"text": "$SNB_AutoInterval",
-			"help": "$SNB_AutoIntervalHelp",
-			"valueOptions": {
-				"min": 10,
-				"max": 1800,
-				"step": 10,
-				"formatString": "{0}",
-				"sourceType": "ModSettingInt"
-			}
-		},
-		{
-			"type": "header",
-			"text": "$SNB_HeaderPayment"
-		},
-		{
-			"id": "iPayment:General",
-			"type": "slider",
-			"text": "$SNB_Payment",
-			"help": "$SNB_PaymentHelp",
-			"valueOptions": {
-				"min": 0,
-				"max": 1000,
-				"step": 10,
-				"formatString": "{0}",
-				"sourceType": "ModSettingInt"
-			}
-		},
-		{
-			"type": "header",
-			"text": "$SNB_HeaderDebug"
-		},
-		{
-			"id": "bDebugLog:General",
-			"type": "toggle",
-			"text": "$SNB_DebugLog",
-			"help": "$SNB_DebugLogHelp",
-			"valueOptions": {
-				"sourceType": "ModSettingBool"
-			}
+			"pageDisplayName": "$SNB_PageDebug",
+			"content": [
+				{
+					"type": "header",
+					"text": "$SNB_HeaderDebug"
+				},
+				{
+					"id": "bDebugLog:General",
+					"type": "toggle",
+					"text": "$SNB_DebugLog",
+					"help": "$SNB_DebugLogHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderDebugLevels"
+				},
+				{
+					"id": "iDebugBrothelLevel:General",
+					"type": "slider",
+					"text": "$SNB_DebugBrothelLevel",
+					"help": "$SNB_DebugBrothelLevelHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 10,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"type": "text",
+					"text": "$SNB_DebugSetBrothelLevel",
+					"help": "$SNB_DebugSetBrothelLevelHelp",
+					"action": {
+						"type": "CallFunction",
+						"function": "DebugSetBrothelLevel"
+					}
+				},
+				{
+					"id": "iDebugWorkerLevel:General",
+					"type": "slider",
+					"text": "$SNB_DebugWorkerLevel",
+					"help": "$SNB_DebugWorkerLevelHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 10,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"type": "text",
+					"text": "$SNB_DebugSetWorkerLevel",
+					"help": "$SNB_DebugSetWorkerLevelHelp",
+					"action": {
+						"type": "CallFunction",
+						"function": "DebugSetWorkerLevel"
+					}
+				},
+				{
+					"type": "text",
+					"text": "$SNB_DebugSetPlayerLevel",
+					"help": "$SNB_DebugSetPlayerLevelHelp",
+					"action": {
+						"type": "CallFunction",
+						"function": "DebugSetPlayerLevel"
+					}
+				}
+			]
 		}
 	]
 }

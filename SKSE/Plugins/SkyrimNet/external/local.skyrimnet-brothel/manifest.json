@@ -1,0 +1,22 @@
+{
+  "id": "local.skyrimnet-brothel",
+  "type": "bundle",
+  "title": "SkyrimNet Brothel",
+  "tagline": "Prompt for the player's answers in SkyrimNet Brothel.",
+  "description": "Prompt used by SkyrimNet Brothel's built-in copy of Player Choices: writes a customer's line and the player's replies to it (or the player's opening lines), each following what the brothel says the reply must mean, in the player's own manner. Requires that mod.",
+  "author": "nightlantern-mods",
+  "tags": [
+    "dialogue"
+  ],
+  "nsfw": true,
+  "icon": "message-circle",
+  "version": "0.1.7",
+  "min_skyrimnet_version": "0.25.0",
+  "mods": [
+    {
+      "name": "SkyrimNet Brothel",
+      "file": "skyrimnet_Brothel.esp",
+      "required": true
+    }
+  ]
+}

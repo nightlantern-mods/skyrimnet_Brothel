@@ -1,0 +1,24 @@
+{
+  "int": {
+    "min_replies": 2,
+    "max_replies": 5,
+    "debug": 0,
+    "interrupt_others": 1
+  },
+  "float": {
+    "approach_distance": 200.0,
+    "approach_timeout": 15.0,
+    "speech_timeout": 40.0,
+    "speech_start_timeout": 15.0,
+    "llm_timeout": 90.0
+  },
+  "string": {
+    "language": "English",
+    "variant": "",
+    "menu_style": "dialogue",
+    "leave_label": "(Say nothing and walk away)",
+    "leave_button": "Leave",
+    "msg_llm_failed": "SkyrimNet could not write the conversation.",
+    "msg_no_menu": "UIExtensions is missing: the choices cannot be shown."
+  }
+}
