@@ -1,4 +1,4 @@
-# SkyrimNet Brothel 0.1.7
+# SkyrimNet Brothel 0.1.8
 
 Run your own brothel. Make any interior your brothel, register women (followers or anyone else) as
 workers, and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the
@@ -42,6 +42,11 @@ is needed. The MCM is now split into pages, so check its settings once.
 
 Japanese players: also install the separate Japanese translation archive and let it overwrite this
 one.
+
+Whatever language your game is set to, the menu and messages are in English (or Japanese with the
+translation). In the MCM the mod is listed as **Brothel**. Before 0.1.8 a game set to any other
+language than English or Japanese showed it as `$SNB_ModName` instead, with untranslated keys
+throughout.
 
 ## How to play
 
@@ -291,7 +296,10 @@ disable the mod.
 - `SKSE/Plugins/SkyrimNet/external/local.skyrimnet-brothel/`: the SkyrimNet prompt that writes the
   lines you pick from.
 - `MCM/Config/skyrimnet_Brothel/`: the MCM Helper menu.
-- `Interface/Translations/skyrimnet_Brothel_ENGLISH.txt`: the English strings.
+- `Interface/Translations/skyrimnet_Brothel_ENGLISH.txt`: the English strings. The same file is
+  also shipped under every other game language's name (`_FRENCH`, `_GERMAN`, `_JAPANESE` and so
+  on), since Skyrim reads only the file of the language it is set to; a translation replaces its
+  own language's copy.
 - `SKSE/Plugins/skyrimnet_Brothel/strings.json`: phrases built around names ("X is approaching Y.");
   a translation replaces this file too.
 - `SKSE/Plugins/skyrimnet_Brothel/positions.json`: the positions offered when you take a customer
