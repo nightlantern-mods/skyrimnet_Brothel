@@ -58,6 +58,7 @@ EndFunction
 
 Event OnUpdate()
 	skyrimnet_Brothel brothel = GetOwningQuest() as skyrimnet_Brothel
+	brothel.SwitchToPlayersBrothel()
 	brothel.KeepPeace()
 	If autoServeAt > 0.0 && Utility.GetCurrentRealTime() >= autoServeAt
 		brothel.AutoServe()
@@ -67,8 +68,11 @@ Event OnUpdate()
 	EndIf
 EndEvent
 
-; The owner's topic is offered only inside the brothel; the peace check speeds up there.
+; Walking into one of the brothels makes it the current one. The owner's topic is offered only
+; inside the brothel; the peace check speeds up there.
 Event OnLocationChange(Location akOldLoc, Location akNewLoc)
-	(GetOwningQuest() as skyrimnet_Brothel).UpdateOwnerTalk()
+	skyrimnet_Brothel brothel = GetOwningQuest() as skyrimnet_Brothel
+	brothel.SwitchToPlayersBrothel()
+	brothel.UpdateOwnerTalk()
 	ScheduleTick()
 EndEvent

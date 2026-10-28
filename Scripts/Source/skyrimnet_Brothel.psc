@@ -5,6 +5,7 @@ MCM/Settings/skyrimnet_Brothel.ini.}
 
 ; Records of this plugin, looked up by FormID so the quest needs no property links.
 Int Property CustomerBaseID = 0x801 AutoReadOnly
+Int Property CustomerFemaleBaseID = 0x825 AutoReadOnly
 String Property PluginName = "skyrimnet_Brothel.esp" AutoReadOnly
 String Property SceneHook = "skyrimnet_Brothel" AutoReadOnly
 
@@ -30,6 +31,10 @@ Int Property FormTypeFurniture = 40 AutoReadOnly
 Float Property SceneSpacing = 250.0 AutoReadOnly
 ; How close the customer comes to the worker to talk.
 Float Property TalkDistance = 150.0 AutoReadOnly
+; How long the walk over may take, and how long the walker may stop getting closer, before he is
+; placed in front of the other one (see ApproachWorker).
+Float Property ApproachTimeoutSeconds = 20.0 AutoReadOnly
+Float Property ApproachStuckSeconds = 6.0 AutoReadOnly
 ; SexLab 1.6x rather than P+: their scene APIs differ, so each call that depends on it goes to
 ; skyrimnet_BrothelSL16 or skyrimnet_BrothelSLP (see DetectSexLab).
 Bool legacySexLab
@@ -52,8 +57,8 @@ String Property StringsFile = "../skyrimnet_Brothel/strings.json" AutoReadOnly
 ; Deals in progress, one slot per worker-customer pair: up to MaxConcurrentWorkers workers (MCM)
 ; plus the player. Each slot carries a serial so a serving thread whose slot was cleared and
 ; reused by a newer deal can tell, and stops.
-Int Property DealSlots = 6 AutoReadOnly
-Int Property MaxConcurrentWorkers = 5 AutoReadOnly
+Int Property DealSlots = 13 AutoReadOnly
+Int Property MaxConcurrentWorkers = 12 AutoReadOnly
 Int Property DealFree = 0 AutoReadOnly
 Int Property DealPending = 1 AutoReadOnly   ; the offer is made; waiting for the worker's answer
 Int Property DealAccepted = 2 AutoReadOnly
@@ -92,6 +97,7 @@ Float Property DealTimeoutSeconds = 60.0 AutoReadOnly
 
 ; MCM buttons only queue their action: the menu pauses the game, so the work runs once it closes.
 String pendingAction
+Int pendingCloseSlot = -1
 
 Event OnInit()
 	; MCM Helper and SkyUI register the menu from their own OnInit.
@@ -108,8 +114,10 @@ Function Setup()
 	DetectSexLab()
 	GrowCustomerSlots()
 	GrowVisitorSlots()
+	GrowBrothelSlots()
 	ResetDeals()
 	talking = False
+	pickingBed = False
 	RegisterKeys()
 	RegisterForModEvent("HookAnimationEnd_" + SceneHook, "OnBrothelSceneEnd")
 	RegisterForModEvent("skyrimnet_BrothelChoices_ReplyChosen", "OnChoicesReplyChosen")
@@ -124,19 +132,24 @@ Function Setup()
 	SyncBrothelGross()
 	ownerNextAt = Utility.GetCurrentRealTime() + OwnerIntervalSeconds()
 	solicitNextAt = Utility.GetCurrentRealTime() + SolicitIntervalSeconds()
+	chatNextAt = Utility.GetCurrentRealTime() + ChatIntervalSeconds()
 	ScheduleNextUpdate()
 	ScheduleVisitors()
 	ShowVisitorStatus()
+	ShowBrothelCount()
+	; The player may have saved in another brothel than the current one.
+	SwitchToPlayersBrothel()
+	GivePower()
 EndFunction
 
 ; SkyrimNet actions that let the worker answer the customer from the conversation itself.
 Function RegisterActions()
 	SkyrimNetApi.RegisterAction("AcceptCustomerOffer", \
-		"Accept the paying customer's offer and take him to bed right now. Use this only when you have agreed to his offer in the conversation.", \
+		"Accept the paying customer's offer and take them to bed right now. Use this only when you have agreed to their offer in the conversation.", \
 		"skyrimnet_Brothel", "Deal_IsEligible", "skyrimnet_Brothel", "AcceptCustomerOffer_Execute", \
 		"", "PAPYRUS", 1, "")
 	SkyrimNetApi.RegisterAction("RefuseCustomerOffer", \
-		"Turn down the paying customer's offer. Use this only when you have refused him in the conversation.", \
+		"Turn down the paying customer's offer. Use this only when you have refused them in the conversation.", \
 		"skyrimnet_Brothel", "Refuse_IsEligible", "skyrimnet_Brothel", "RefuseCustomerOffer_Execute", \
 		"", "PAPYRUS", 1, "")
 	; The other way round: a worker (or the player) offers a customer her company, and he answers.
@@ -296,7 +309,7 @@ EndFunction
 Event OnSettingChange(String a_ID)
 	If a_ID == "iServeKey:General" || a_ID == "iRegisterKey:General" || a_ID == "iPlayerServeKey:General"
 		RegisterKeys()
-	ElseIf a_ID == "iCustomerCount:General"
+	ElseIf a_ID == "iCustomerCount:General" || a_ID == "iCustomerSex:General" || a_ID == "iHiredWorkers:General"
 		pendingAction = "sync"
 		RegisterForSingleUpdate(0.1)
 	ElseIf a_ID == "bAutoServe:General" || a_ID == "iAutoInterval:General"
@@ -310,6 +323,9 @@ Event OnSettingChange(String a_ID)
 		ScheduleNextUpdate()
 	ElseIf a_ID == "bWorkerSolicit:General" || a_ID == "iSolicitInterval:General"
 		solicitNextAt = Utility.GetCurrentRealTime() + SolicitIntervalSeconds()
+		ScheduleNextUpdate()
+	ElseIf a_ID == "bWorkerChat:General" || a_ID == "iChatInterval:General"
+		chatNextAt = Utility.GetCurrentRealTime() + ChatIntervalSeconds()
 		ScheduleNextUpdate()
 	ElseIf a_ID == "bPlayerWorks:General"
 		UpdateOwnerTalk()
@@ -339,6 +355,7 @@ Event OnKeyDown(Int keyCode)
 	If Utility.IsInMenuMode() || UI.IsTextInputEnabled()
 		Return
 	EndIf
+	SwitchToPlayersBrothel()
 	If keyCode == serveKey
 		ServeCustomer(False)
 	ElseIf keyCode == registerKey
@@ -383,7 +400,9 @@ Function DesignateBrothel()
 	RegisterForSingleUpdate(0.1)
 EndFunction
 
+; MCM button: closes the brothel picked in the brothel list, once the menu closes.
 Function ClearBrothel()
+	pendingCloseSlot = PickedBrothelSlot()
 	pendingAction = "clear"
 	RegisterForSingleUpdate(0.1)
 EndFunction
@@ -396,21 +415,23 @@ Event OnUpdate()
 	If queued == "designate"
 		DoDesignateBrothel()
 	ElseIf queued == "clear"
-		DismissCustomers()
-		ReleaseAllVisitors()
-		ResetTown()
-		brothelCell = None
-		UpdateOwnerTalk()
-		SetModSettingString("sBrothelName:General", "$SNB_None")
-		Debug.Notification("$SNB_Cleared")
+		CloseBrothel(pendingCloseSlot)
 	ElseIf queued == "sync"
 		SyncCustomers()
+		SyncHiredWorkers()
+	ElseIf queued == "registerfollowers"
+		DoRegisterFollowers()
+	ElseIf queued == "unregisterfollowers"
+		DoUnregisterFollowers()
+	ElseIf queued == "manage"
+		ManageMenu()
 	EndIf
 	ClearStalledDeals()
 	; The next update is booked before the long work below (a whole conversation and deal), so the
 	; watchdog and the owner's rounds keep running meanwhile.
 	Bool ownerDue = NpcOwnerDue()
 	Bool solicitDue = SolicitDue()
+	Bool chatDue = ChatDue()
 	ScheduleNextUpdate()
 	If queued == "recommend"
 		Actor customer = pendingRecommend
@@ -427,6 +448,9 @@ Event OnUpdate()
 	If solicitDue
 		WorkerSolicitRound()
 	EndIf
+	If chatDue
+		WorkerChatRound()
+	EndIf
 EndEvent
 
 ; A queued MCM action already has a short update pending; the watchdog runs after it anyway.
@@ -437,7 +461,7 @@ Function ScheduleWatchdog()
 EndFunction
 
 ; One update serves the watchdog (every WatchdogSeconds while a deal is open) and an NPC owner's
-; rounds (at ownerNextAt): it is booked for whichever comes first.
+; rounds (at ownerNextAt), workers' invitations and their chats: it is booked for whichever comes first.
 Function ScheduleNextUpdate()
 	Float delay = 0.0
 	If OpenDealCount() > 0
@@ -461,33 +485,18 @@ Function ScheduleNextUpdate()
 			delay = solicitDelay
 		EndIf
 	EndIf
+	If GetModSettingBool("bWorkerChat:General")
+		Float chatDelay = chatNextAt - Utility.GetCurrentRealTime()
+		If chatDelay < 1.0
+			chatDelay = 1.0
+		EndIf
+		If delay == 0.0 || chatDelay < delay
+			delay = chatDelay
+		EndIf
+	EndIf
 	If delay > 0.0
 		RegisterForSingleUpdate(delay)
 	EndIf
-EndFunction
-
-Function DoDesignateBrothel()
-	Actor player = Game.GetPlayer()
-	Cell here = player.GetParentCell()
-	If !here || !here.IsInterior()
-		Debug.Notification("$SNB_NotInterior")
-		Return
-	EndIf
-	DismissCustomers()
-	ReleaseAllVisitors()
-	ResetTown()
-	brothelCell = here
-	Int i = 0
-	While i < TargetCustomerCount()
-		customers[i] = SpawnCustomer(player)
-		i += 1
-	EndWhile
-	FindBrothelDoors()
-	SetModSettingString("sBrothelName:General", here.GetName())
-	UpdateOwnerTalk()
-	; The player alias's timer starts the peace checks now that there is a brothel.
-	(GetAlias(0) as skyrimnet_BrothelPlayer).ScheduleTick()
-	Debug.Notification("$SNB_Designated")
 EndFunction
 
 Int Function TargetCustomerCount()
@@ -500,8 +509,52 @@ Int Function TargetCustomerCount()
 	Return count
 EndFunction
 
-Actor Function SpawnCustomer(ObjectReference near)
-	ActorBase customerBase = Game.GetFormFromFile(CustomerBaseID, PluginName) as ActorBase
+; How many of the brothel's own customers are women (MCM "Customers' sex": men, women, or half and
+; half, with an odd count one more man: 3 is two men and a woman).
+Int Function TargetWomenCount()
+	Int sex = GetModSettingInt("iCustomerSex:General")
+	If sex == 1
+		Return TargetCustomerCount()
+	ElseIf sex == 2
+		Return TargetCustomerCount() / 2
+	EndIf
+	Return 0
+EndFunction
+
+Bool Function IsWoman(Actor akActor)
+	Return akActor.GetLeveledActorBase().GetSex() == 1
+EndFunction
+
+; Pronouns for a customer in narrations, now that customers can be women.
+String Function HeOf(Actor akActor)
+	If IsWoman(akActor)
+		Return "she"
+	EndIf
+	Return "he"
+EndFunction
+
+String Function HisOf(Actor akActor)
+	If IsWoman(akActor)
+		Return "her"
+	EndIf
+	Return "his"
+EndFunction
+
+String Function HimOf(Actor akActor)
+	If IsWoman(akActor)
+		Return "her"
+	EndIf
+	Return "him"
+EndFunction
+
+; A man or a woman from the plugin's two customer NPCs, whose looks come from vanilla men's or
+; women's templates.
+Actor Function SpawnCustomer(ObjectReference near, Bool woman = False)
+	Int baseID = CustomerBaseID
+	If woman
+		baseID = CustomerFemaleBaseID
+	EndIf
+	ActorBase customerBase = Game.GetFormFromFile(baseID, PluginName) as ActorBase
 	Actor customer = near.PlaceAtMe(customerBase, 1, True, False) as Actor
 	customer.MoveTo(near, Utility.RandomFloat(-200.0, 200.0), Utility.RandomFloat(-200.0, 200.0), 0.0)
 	Return customer
@@ -521,15 +574,17 @@ Function GrowCustomerSlots()
 	customers = grown
 EndFunction
 
-; Brings the brothel to the MCM's customer count. New customers appear beside one already there
-; (or beside the player in the brothel); extra ones leave, never one in a deal. Dead customers are
-; cleared away and replaced.
+; Brings the brothel to the MCM's customer count and sex mix. Extra men or women leave first, never
+; one in a deal; then the missing ones appear beside a customer already there (or beside the player
+; in the brothel). Dead customers are cleared away and replaced. One kept for his deal leaves at
+; the next sync.
 Function SyncCustomers()
 	If !brothelCell
 		Return
 	EndIf
 	Actor anchor = None
-	Int present = 0
+	Int men = 0
+	Int women = 0
 	Int i = 0
 	While i < customers.Length
 		If customers[i] && customers[i].IsDead()
@@ -538,7 +593,11 @@ Function SyncCustomers()
 			customers[i] = None
 		EndIf
 		If customers[i]
-			present += 1
+			If IsWoman(customers[i])
+				women += 1
+			Else
+				men += 1
+			EndIf
 			If !anchor
 				anchor = customers[i]
 			EndIf
@@ -549,24 +608,37 @@ Function SyncCustomers()
 		anchor = Game.GetPlayer()
 	EndIf
 
-	Int target = TargetCustomerCount()
-	i = 0
-	While present < target && anchor && i < customers.Length
-		If !customers[i]
-			customers[i] = SpawnCustomer(anchor)
-			present += 1
-		EndIf
-		i += 1
-	EndWhile
+	Int targetWomen = TargetWomenCount()
+	Int targetMen = TargetCustomerCount() - targetWomen
 	i = customers.Length - 1
-	While present > target && i >= 0
+	While i >= 0
 		If customers[i] && !IsInDeal(customers[i])
-			customers[i].Disable()
-			customers[i].Delete()
-			customers[i] = None
-			present -= 1
+			Bool woman = IsWoman(customers[i])
+			If (woman && women > targetWomen) || (!woman && men > targetMen)
+				customers[i].Disable()
+				customers[i].Delete()
+				customers[i] = None
+				If woman
+					women -= 1
+				Else
+					men -= 1
+				EndIf
+			EndIf
 		EndIf
 		i -= 1
+	EndWhile
+	i = 0
+	While (men < targetMen || women < targetWomen) && anchor && i < customers.Length
+		If !customers[i]
+			Bool spawnWoman = women < targetWomen
+			customers[i] = SpawnCustomer(anchor, spawnWoman)
+			If spawnWoman
+				women += 1
+			Else
+				men += 1
+			EndIf
+		EndIf
+		i += 1
 	EndWhile
 EndFunction
 
@@ -580,6 +652,447 @@ Function DismissCustomers()
 		EndIf
 		i += 1
 	EndWhile
+EndFunction
+
+; ---------------------------------------------------------------------------------------------
+; Hired workers
+; ---------------------------------------------------------------------------------------------
+
+; With "Hired workers" above 0 (MCM), the brothel hires women of its own: they appear like the
+; customers, are registered as workers on the spot at "Hired workers' level", and stay in the
+; brothel. One who is unregistered leaves the game, and all leave when the brothel closes or
+; moves; their levels go with them.
+
+Int Property MaxHiredWorkers = 10 AutoReadOnly
+Int Property WorkerBaseID = 0x826 AutoReadOnly
+
+Bool Function IsHiredWorker(Actor akActor)
+	Return akActor && akActor.GetActorBase() == Game.GetFormFromFile(WorkerBaseID, PluginName) as ActorBase
+EndFunction
+
+Int Function TargetHiredCount()
+	Int count = GetModSettingInt("iHiredWorkers:General")
+	If count < 0
+		Return 0
+	ElseIf count > MaxHiredWorkers
+		Return MaxHiredWorkers
+	EndIf
+	Return count
+EndFunction
+
+; A new worker beside near, registered at the MCM's starting level.
+Function HireWorker(ObjectReference near)
+	ActorBase workerBase = Game.GetFormFromFile(WorkerBaseID, PluginName) as ActorBase
+	Actor worker = near.PlaceAtMe(workerBase, 1, True, False) as Actor
+	worker.MoveTo(near, Utility.RandomFloat(-200.0, 200.0), Utility.RandomFloat(-200.0, 200.0), 0.0)
+	Int level = GetModSettingInt("iHiredLevel:General")
+	If level < 1
+		level = 1
+	ElseIf level > MaxLevel
+		level = MaxLevel
+	EndIf
+	StorageUtil.SetIntValue(worker, "SNB_Gross", (level - 1) * WorkerLevelStep())
+	StorageUtil.SetIntValue(worker, "SNB_HiredSlot", currentSlot)
+	RegisterWorker(worker)
+EndFunction
+
+; Brings the current brothel's hired workers to the MCM's count, as SyncCustomers does for
+; customers: dead ones are cleared away and replaced, extra ones leave (never one with a customer),
+; missing ones appear beside the player in the brothel or beside a customer there.
+Function SyncHiredWorkers()
+	If !brothelCell
+		Return
+	EndIf
+	Int hired = 0
+	Int i = workerCount - 1
+	While i >= 0
+		If IsHiredWorker(workers[i]) && HiredSlotOf(workers[i]) == currentSlot
+			If workers[i].IsDead()
+				RemoveWorkerAt(i)
+			Else
+				hired += 1
+			EndIf
+		EndIf
+		i -= 1
+	EndWhile
+	Int target = TargetHiredCount()
+	i = workerCount - 1
+	While hired > target && i >= 0
+		If IsHiredWorker(workers[i]) && HiredSlotOf(workers[i]) == currentSlot && !IsInDeal(workers[i])
+			RemoveWorkerAt(i)
+			hired -= 1
+		EndIf
+		i -= 1
+	EndWhile
+	ObjectReference anchor = None
+	If Game.GetPlayer().GetParentCell() == brothelCell
+		anchor = Game.GetPlayer()
+	EndIf
+	i = 0
+	While !anchor && i < customers.Length
+		If customers[i] && customers[i].GetParentCell() == brothelCell
+			anchor = customers[i]
+		EndIf
+		i += 1
+	EndWhile
+	While hired < target && anchor && workerCount < MaxWorkers
+		HireWorker(anchor)
+		hired += 1
+	EndWhile
+	ShowWorkerCount()
+EndFunction
+
+; The hired workers of the brothel in this slot (see Brothels below).
+Function DismissHiredWorkers(Int slot)
+	Int i = workerCount - 1
+	While i >= 0
+		If IsHiredWorker(workers[i]) && HiredSlotOf(workers[i]) == slot
+			RemoveWorkerAt(i)
+		EndIf
+		i -= 1
+	EndWhile
+	ShowWorkerCount()
+EndFunction
+
+; Which brothel a hired worker works for. Those hired before there were several brothels have none
+; stored and belong to the first.
+Int Function HiredSlotOf(Actor worker)
+	Return StorageUtil.GetIntValue(worker, "SNB_HiredSlot", 0)
+EndFunction
+
+; ---------------------------------------------------------------------------------------------
+; Brothels
+; ---------------------------------------------------------------------------------------------
+
+; The player can run up to MaxUserBrothels brothels; BrothelSlots keeps one more slot, the last,
+; for a quest to come. The rest of the script works on one brothel, the current one: brothelCell,
+; customers, the town's people and its door and waiting spot, the owner and the brothel's takings.
+; The current brothel is the one the player is in, or was in last. The others keep that state in
+; StorageUtil on their cell, and it is swapped in when the player walks into one (or, closing one,
+; it is cleared). Deals in flight and visitors on their way belong to the brothel left behind, so a
+; switch closes the deals (gold given back before a scene) and sends the visitors home.
+; Registered workers are shared: a worker takes customers in whichever brothel she is in. Hired
+; workers belong to the brothel that hired them. MCM settings are shared by all brothels.
+
+Int Property BrothelSlots = 4 AutoReadOnly
+Int Property MaxUserBrothels = 3 AutoReadOnly
+
+Cell[] brothelCells
+Int currentSlot = -1
+Bool brothelGrossSynced
+; The MCM's brothel list as last shown, and the slot of each entry.
+String[] brothelMenuNames
+Int[] brothelMenuSlots
+
+; Saves from before several brothels: their one brothel becomes the first.
+Function GrowBrothelSlots()
+	If brothelCells
+		Return
+	EndIf
+	brothelCells = new Cell[4]
+	currentSlot = -1
+	If brothelCell
+		brothelCells[0] = brothelCell
+		currentSlot = 0
+	EndIf
+EndFunction
+
+; How many brothels the player has made.
+Int Function BrothelCount()
+	Int count = 0
+	Int i = 0
+	While i < MaxUserBrothels
+		If brothelCells[i]
+			count += 1
+		EndIf
+		i += 1
+	EndWhile
+	Return count
+EndFunction
+
+; Closes every open deal: before a scene the customer gets the gold back (ReleaseDeal).
+Function ReleaseOpenDeals()
+	Int i = 0
+	While i < DealSlots
+		If dealStates[i] != DealFree
+			ReleaseDeal(i)
+		EndIf
+		i += 1
+	EndWhile
+EndFunction
+
+; Stores the current brothel's state on its cell.
+Function SaveSlot()
+	If !brothelCell
+		Return
+	EndIf
+	Form slotKey = brothelCell
+	StorageUtil.FormListClear(slotKey, "SNB_Customers")
+	Int i = 0
+	While i < customers.Length
+		If customers[i]
+			StorageUtil.FormListAdd(slotKey, "SNB_Customers", customers[i])
+		EndIf
+		i += 1
+	EndWhile
+	StorageUtil.FormListClear(slotKey, "SNB_TownPool")
+	StorageUtil.FloatListClear(slotKey, "SNB_TownPoolLastVisit")
+	i = 0
+	While i < townPool.Length
+		If townPool[i]
+			StorageUtil.FormListAdd(slotKey, "SNB_TownPool", townPool[i])
+			StorageUtil.FloatListAdd(slotKey, "SNB_TownPoolLastVisit", townPoolLastVisit[i])
+		EndIf
+		i += 1
+	EndWhile
+	StorageUtil.SetFormValue(slotKey, "SNB_Marker", brothelMarker)
+	StorageUtil.SetFormValue(slotKey, "SNB_InsideDoor", insideDoor)
+	StorageUtil.SetFormValue(slotKey, "SNB_OutsideDoor", outsideDoor)
+	StorageUtil.SetFormValue(slotKey, "SNB_Owner", brothelOwner)
+	StorageUtil.SetIntValue(slotKey, "SNB_BrothelGross", brothelGross)
+EndFunction
+
+; Makes the brothel in this slot the current one, reading its state from its cell. A slot never
+; saved (a new brothel) starts empty.
+Function LoadSlot(Int slot)
+	currentSlot = slot
+	brothelCell = None
+	If slot >= 0
+		brothelCell = brothelCells[slot]
+	EndIf
+	customers = new Actor[10]
+	townPool = new Actor[40]
+	townPoolLastVisit = new Float[40]
+	brothelMarker = None
+	insideDoor = None
+	outsideDoor = None
+	brothelOwner = None
+	brothelGross = 0
+	ownerKeptWaiting = None
+	ownerLastReport = ""
+	If !brothelCell
+		Return
+	EndIf
+	Form slotKey = brothelCell
+	Form[] stored = StorageUtil.FormListToArray(slotKey, "SNB_Customers")
+	Int i = 0
+	While i < stored.Length && i < customers.Length
+		customers[i] = stored[i] as Actor
+		i += 1
+	EndWhile
+	stored = StorageUtil.FormListToArray(slotKey, "SNB_TownPool")
+	Float[] lastVisits = StorageUtil.FloatListToArray(slotKey, "SNB_TownPoolLastVisit")
+	i = 0
+	While i < stored.Length && i < townPool.Length
+		townPool[i] = stored[i] as Actor
+		If i < lastVisits.Length
+			townPoolLastVisit[i] = lastVisits[i]
+		EndIf
+		i += 1
+	EndWhile
+	brothelMarker = StorageUtil.GetFormValue(slotKey, "SNB_Marker") as ObjectReference
+	insideDoor = StorageUtil.GetFormValue(slotKey, "SNB_InsideDoor") as ObjectReference
+	outsideDoor = StorageUtil.GetFormValue(slotKey, "SNB_OutsideDoor") as ObjectReference
+	brothelOwner = StorageUtil.GetFormValue(slotKey, "SNB_Owner") as Actor
+	brothelGross = StorageUtil.GetIntValue(slotKey, "SNB_BrothelGross", 0)
+	If brothelOwner && brothelOwner.IsDead()
+		brothelOwner = None
+	EndIf
+EndFunction
+
+Function ClearSlotStorage(Cell slotCell)
+	Form slotKey = slotCell
+	StorageUtil.FormListClear(slotKey, "SNB_Customers")
+	StorageUtil.FormListClear(slotKey, "SNB_TownPool")
+	StorageUtil.FloatListClear(slotKey, "SNB_TownPoolLastVisit")
+	StorageUtil.UnsetFormValue(slotKey, "SNB_Marker")
+	StorageUtil.UnsetFormValue(slotKey, "SNB_InsideDoor")
+	StorageUtil.UnsetFormValue(slotKey, "SNB_OutsideDoor")
+	StorageUtil.UnsetFormValue(slotKey, "SNB_Owner")
+	StorageUtil.UnsetIntValue(slotKey, "SNB_BrothelGross")
+EndFunction
+
+; Called when the player may have walked into another brothel (location changes, the player
+; alias's timer, hotkeys, loads).
+Function SwitchToPlayersBrothel()
+	If !brothelCells
+		Return
+	EndIf
+	Cell here = Game.GetPlayer().GetParentCell()
+	If !here || here == brothelCell
+		Return
+	EndIf
+	Int slot = brothelCells.Find(here)
+	If slot >= 0
+		SwitchToSlot(slot)
+	EndIf
+EndFunction
+
+Function SwitchToSlot(Int slot)
+	If slot == currentSlot
+		Return
+	EndIf
+	ReleaseOpenDeals()
+	ReleaseAllVisitors()
+	SaveSlot()
+	LoadSlot(slot)
+	BrothelChanged()
+	If GetModSettingBool("bDebugLog:General") && brothelCell
+		DebugLog("Brothel: now in " + brothelCell.GetName() + " (slot " + slot + ")")
+	EndIf
+EndFunction
+
+; Brings the MCM, the topics and the timers in line with the current brothel, and its customers
+; and hired workers up to the MCM's counts.
+Function BrothelChanged()
+	If brothelCell
+		SetModSettingString("sBrothelName:General", brothelCell.GetName())
+		SyncCustomers()
+		SyncHiredWorkers()
+	Else
+		SetModSettingString("sBrothelName:General", "$SNB_None")
+	EndIf
+	ShowBrothelCount()
+	ShowOwner()
+	ShowLevels()
+	ShowWorkerCount()
+	UpdateOwnerTalk()
+	ScheduleVisitors()
+	ShowVisitorStatus()
+	ScheduleNextUpdate()
+	(GetAlias(0) as skyrimnet_BrothelPlayer).ScheduleTick()
+EndFunction
+
+Function ShowBrothelCount()
+	SetModSettingString("sBrothelCount:General", BrothelCount() + " / " + MaxUserBrothels)
+EndFunction
+
+; The MCM's brothel list: "1: Riften Bunkhouse" and so on; the pick is kept while it is still there,
+; else the current brothel is picked. Set from OnPageSelect only (see OnConfigOpen).
+Function RefreshBrothelMenu()
+	brothelMenuNames = Utility.CreateStringArray(MaxUserBrothels)
+	brothelMenuSlots = Utility.CreateIntArray(MaxUserBrothels)
+	Int count = 0
+	Int i = 0
+	While i < MaxUserBrothels
+		If brothelCells[i]
+			brothelMenuNames[count] = (i + 1) + ": " + brothelCells[i].GetName()
+			brothelMenuSlots[count] = i
+			count += 1
+		EndIf
+		i += 1
+	EndWhile
+	If count == 0
+		brothelMenuNames = new String[1]
+		brothelMenuNames[0] = "$SNB_None"
+		brothelMenuSlots = new Int[1]
+		brothelMenuSlots[0] = -1
+	Else
+		brothelMenuNames = Utility.ResizeStringArray(brothelMenuNames, count)
+		brothelMenuSlots = Utility.ResizeIntArray(brothelMenuSlots, count)
+	EndIf
+	SetMenuOptions("sBrothelPick:General", brothelMenuNames, brothelMenuNames)
+	If brothelMenuNames.Find(GetModSettingString("sBrothelPick:General")) < 0
+		Int current = brothelMenuSlots.Find(currentSlot)
+		If current < 0
+			current = 0
+		EndIf
+		SetModSettingString("sBrothelPick:General", brothelMenuNames[current])
+	EndIf
+EndFunction
+
+; The slot picked in the MCM's brothel list; the current brothel when the list has not been shown.
+Int Function PickedBrothelSlot()
+	If brothelMenuNames
+		Int index = brothelMenuNames.Find(GetModSettingString("sBrothelPick:General"))
+		If index >= 0
+			Return brothelMenuSlots[index]
+		EndIf
+	EndIf
+	Return currentSlot
+EndFunction
+
+; Makes the interior the player stands in a new brothel, or makes it the current one if it already
+; is one. The other brothels stay as they are.
+Function DoDesignateBrothel()
+	Actor player = Game.GetPlayer()
+	Cell here = player.GetParentCell()
+	If !here || !here.IsInterior()
+		Debug.Notification("$SNB_NotInterior")
+		Return
+	EndIf
+	Int existing = brothelCells.Find(here)
+	If existing >= 0
+		SwitchToSlot(existing)
+		Debug.Notification("$SNB_AlreadyBrothel")
+		Return
+	EndIf
+	Int slot = brothelCells.Find(None)
+	If slot < 0 || slot >= MaxUserBrothels
+		Debug.Notification("$SNB_BrothelLimit")
+		Return
+	EndIf
+	ReleaseOpenDeals()
+	ReleaseAllVisitors()
+	SaveSlot()
+	brothelCells[slot] = here
+	ClearSlotStorage(here)
+	LoadSlot(slot)
+	Int women = TargetWomenCount()
+	Int i = 0
+	While i < TargetCustomerCount()
+		customers[i] = SpawnCustomer(player, i < women)
+		i += 1
+	EndWhile
+	FindBrothelDoors()
+	BrothelChanged()
+	Debug.Notification("$SNB_Designated")
+EndFunction
+
+; Closes the brothel in this slot: its customers and hired workers leave, its town and owner are
+; forgotten. Closing the current one makes another brothel (if any) the current one.
+Function CloseBrothel(Int slot)
+	If slot < 0 || slot >= BrothelSlots || !brothelCells[slot]
+		Return
+	EndIf
+	If slot == currentSlot
+		ReleaseOpenDeals()
+		DismissCustomers()
+		ReleaseAllVisitors()
+		ResetTown()
+	Else
+		Form slotKey = brothelCells[slot]
+		Form[] stored = StorageUtil.FormListToArray(slotKey, "SNB_Customers")
+		Int i = 0
+		While i < stored.Length
+			ObjectReference leaving = stored[i] as ObjectReference
+			If leaving
+				leaving.Disable()
+				leaving.Delete()
+			EndIf
+			i += 1
+		EndWhile
+		ObjectReference marker = StorageUtil.GetFormValue(slotKey, "SNB_Marker") as ObjectReference
+		If marker
+			marker.Disable()
+			marker.Delete()
+		EndIf
+	EndIf
+	DismissHiredWorkers(slot)
+	ClearSlotStorage(brothelCells[slot])
+	brothelCells[slot] = None
+	If slot == currentSlot
+		Int next = 0
+		While next < BrothelSlots && !brothelCells[next]
+			next += 1
+		EndWhile
+		If next >= BrothelSlots
+			next = -1
+		EndIf
+		LoadSlot(next)
+	EndIf
+	BrothelChanged()
+	Debug.Notification("$SNB_Cleared")
 EndFunction
 
 ; ---------------------------------------------------------------------------------------------
@@ -783,7 +1296,8 @@ Bool Function CanVisit(Actor person)
 		&& IsPerson(person) && !person.IsGuard() && !person.IsPlayerTeammate() \
 		&& !person.IsInFaction(Game.GetFormFromFile(0x05C84E, "Skyrim.esm") as Faction) \
 		&& workers.Find(person) < 0 && customers.Find(person) < 0 && person != brothelOwner && !person.IsHostileToActor(player) \
-		&& person.GetLeveledActorBase() != Game.GetFormFromFile(CustomerBaseID, PluginName) as ActorBase
+		&& person.GetActorBase() != Game.GetFormFromFile(CustomerBaseID, PluginName) as ActorBase \
+		&& person.GetActorBase() != Game.GetFormFromFile(CustomerFemaleBaseID, PluginName) as ActorBase && !IsHiredWorker(person)
 EndFunction
 
 ; Who may set off now: of the sex the MCM asks for, free (no fight, quest scene or talk with the
@@ -1261,7 +1775,7 @@ Function OwnerWhileBusy()
 			who = "the girls are busy with customers right now (" + busy + ")"
 		EndIf
 		OwnerSpeaks(o + " runs this brothel, and " + who + ". " + o + " walks over to " + waiting.GetDisplayName() \
-			+ ", a customer who is waiting, keeps him in good spirits and asks him to wait a little longer, in a few lines.", waiting)
+			+ ", a customer who is waiting, keeps " + HimOf(waiting) + " in good spirits and asks " + HimOf(waiting) + " to wait a little longer, in a few lines.", waiting)
 		If GetModSettingBool("bDebugLog:General")
 			DebugLog("Owner " + o + " keeps " + waiting.GetDisplayName() + " waiting")
 		EndIf
@@ -1426,9 +1940,9 @@ EndFunction
 
 ; The NPC owner says something to listener, in the talk turn every pair waits for (see AcquireTalk).
 Function OwnerSpeaks(String narration, Actor listener)
-	talking = True
-	talkingSince = Utility.GetCurrentRealTime()
 	Float startedAt = Utility.GetCurrentRealTime()
+	talking = True
+	talkingSince = startedAt
 	SkyrimNetApi.DirectNarration(narration, brothelOwner, listener)
 	WaitForSpeech(startedAt, -1)
 	ReleaseTalk()
@@ -1445,10 +1959,11 @@ Function ToggleWorker(Actor target)
 	EndIf
 	Int index = workers.Find(target)
 	If index >= 0
-		target.RemoveFromFaction(WorkerFaction())
-		workers[index] = workers[workerCount - 1]
-		workers[workerCount - 1] = None
-		workerCount -= 1
+		If IsHiredWorker(target) && IsInDeal(target)
+			Debug.Notification("$SNB_WorkerBusy")
+			Return
+		EndIf
+		RemoveWorkerAt(index)
 		ShowWorkerCount()
 		Debug.Notification("$SNB_WorkerRemoved")
 		Return
@@ -1465,13 +1980,268 @@ Function ToggleWorker(Actor target)
 		Debug.Notification("$SNB_WorkerListFull")
 		Return
 	EndIf
+	RegisterWorker(target)
+	ShowWorkerCount()
+	Debug.Notification("$SNB_WorkerAdded")
+EndFunction
+
+Function RegisterWorker(Actor target)
 	workers[workerCount] = target
 	workerCount += 1
 	target.AddToFaction(WorkerFaction())
 	SkyrimNetApi.RegisterPersistentEvent(target.GetDisplayName() + " works at the brothel now, selling her company for gold. She " \
 		+ WorkerAttitude(WorkerLevel(target)) + ".", target, None)
+EndFunction
+
+; MCM buttons: registers every female follower near the player, or unregisters every registered
+; worker who is a follower, once the menu closes. Followers are told apart the vanilla way (a
+; teammate, or in the current follower faction), which any follower framework keeps up.
+Function RegisterFollowers()
+	pendingAction = "registerfollowers"
+	RegisterForSingleUpdate(0.1)
+EndFunction
+
+Function UnregisterFollowers()
+	pendingAction = "unregisterfollowers"
+	RegisterForSingleUpdate(0.1)
+EndFunction
+
+Bool Function IsFollower(Actor akActor)
+	Return akActor.IsPlayerTeammate() || akActor.GetFactionRank(Game.GetFormFromFile(0x05C84E, "Skyrim.esm") as Faction) >= 0
+EndFunction
+
+Function DoRegisterFollowers()
+	Actor player = Game.GetPlayer()
+	Actor[] nearby = MiscUtil.ScanCellNPCs(player, 0.0, None, True)
+	Int count = 0
+	Int i = 0
+	While i < nearby.Length && workerCount < MaxWorkers
+		Actor follower = nearby[i]
+		If follower && follower != player && !follower.IsChild() && IsPerson(follower) \
+				&& follower.GetLeveledActorBase().GetSex() == 1 && IsFollower(follower) \
+				&& workers.Find(follower) < 0 && customers.Find(follower) < 0
+			RegisterWorker(follower)
+			count += 1
+		EndIf
+		i += 1
+	EndWhile
 	ShowWorkerCount()
-	Debug.Notification("$SNB_WorkerAdded")
+	If count == 0
+		Debug.Notification("$SNB_NoFollowers")
+	Else
+		Debug.Notification(Phrase("followersAddedBefore", "") + count + Phrase("followersAddedAfter", " followers registered as workers."))
+	EndIf
+EndFunction
+
+Function DoUnregisterFollowers()
+	Int count = 0
+	Int i = workerCount - 1
+	While i >= 0
+		If workers[i] && !IsHiredWorker(workers[i]) && IsFollower(workers[i])
+			RemoveWorkerAt(i)
+			count += 1
+		EndIf
+		i -= 1
+	EndWhile
+	ShowWorkerCount()
+	If count == 0
+		Debug.Notification("$SNB_NoFollowerWorkers")
+	Else
+		Debug.Notification(Phrase("followersRemovedBefore", "") + count + Phrase("followersRemovedAfter", " followers are no longer workers."))
+	EndIf
+EndFunction
+
+; ---------------------------------------------------------------------------------------------
+; The Manage Brothel power
+; ---------------------------------------------------------------------------------------------
+
+; A lesser power that opens a list menu (UIExtensions) with what the MCM does most: adding and
+; closing brothels, the followers' bulk buttons, and the customer and hired-worker counts. It is a
+; way in for players whose MCM list is full (SkyUI shows at most 128 menus). The menu changes the
+; same settings as the MCM. Its text comes from strings.json.
+
+Int Property ManagePowerID = 0x828 AutoReadOnly
+
+; Called from Setup: the player gets the power once, and again if it was taken away.
+Function GivePower()
+	Spell power = Game.GetFormFromFile(ManagePowerID, PluginName) as Spell
+	Actor player = Game.GetPlayer()
+	If power && !player.HasSpell(power)
+		player.AddSpell(power)
+	EndIf
+EndFunction
+
+; Cast by the power: the menu opens from the quest's own update, like the MCM buttons' work.
+Function OpenManageMenu()
+	pendingAction = "manage"
+	RegisterForSingleUpdate(0.1)
+EndFunction
+
+; The main list. A count or the customers' sex comes back to it once picked; the actions close it
+; and run. Customers and hired workers are brought to the new counts once the menu is gone.
+Function ManageMenu()
+	Bool countsChanged = False
+	Bool open = True
+	While open
+		String[] entries = new String[10]
+		String current = Phrase("menuNone", "(none)")
+		If brothelCell
+			current = brothelCell.GetName()
+		EndIf
+		entries[0] = Phrase("menuCurrent", "Current brothel: ") + current + " (" + BrothelCount() + " / " + MaxUserBrothels + ")"
+		entries[1] = Phrase("menuDesignate", "Add this interior as a brothel")
+		entries[2] = Phrase("menuClose", "Close a brothel...")
+		entries[3] = Phrase("menuRegisterFollowers", "Register female followers")
+		entries[4] = Phrase("menuUnregisterFollowers", "Unregister followers")
+		entries[5] = Phrase("menuCustomers", "Customers: ") + TargetCustomerCount()
+		entries[6] = Phrase("menuCustomerSex", "Customers' sex: ") + CustomerSexName(GetModSettingInt("iCustomerSex:General"))
+		entries[7] = Phrase("menuHired", "Hired workers: ") + TargetHiredCount()
+		entries[8] = Phrase("menuHiredLevel", "Hired workers' starting level: ") + GetModSettingInt("iHiredLevel:General")
+		entries[9] = Phrase("menuExit", "Close the menu")
+		Int pick = PickFromList(entries)
+		If pick == 1
+			open = False
+			DoDesignateBrothel()
+		ElseIf pick == 2
+			open = !PickBrothelToClose()
+		ElseIf pick == 3
+			open = False
+			DoRegisterFollowers()
+		ElseIf pick == 4
+			open = False
+			DoUnregisterFollowers()
+		ElseIf pick == 5
+			countsChanged = PickSetting("iCustomerCount:General", 1, MaxCustomers) || countsChanged
+		ElseIf pick == 6
+			countsChanged = PickCustomerSex() || countsChanged
+		ElseIf pick == 7
+			countsChanged = PickSetting("iHiredWorkers:General", 0, MaxHiredWorkers) || countsChanged
+		ElseIf pick == 8
+			PickSetting("iHiredLevel:General", 1, 10)
+		ElseIf pick != 0
+			open = False
+		EndIf
+	EndWhile
+	If countsChanged
+		SyncCustomers()
+		SyncHiredWorkers()
+	EndIf
+EndFunction
+
+; Shows one list and returns the index of the entry picked, or -1 when it was closed without one.
+Int Function PickFromList(String[] entries)
+	UIListMenu menu = UIExtensions.GetMenu("UIListMenu") as UIListMenu
+	If !menu
+		Debug.Notification(Phrase("menuMissing", "UIExtensions is missing: the brothel menu cannot open."))
+		Return -1
+	EndIf
+	Int i = 0
+	While i < entries.Length
+		menu.AddEntryItem(entries[i])
+		i += 1
+	EndWhile
+	menu.OpenMenu()
+	Return menu.GetResultInt()
+EndFunction
+
+; A number list from low to high, the setting's value marked; True when a new value was picked.
+Bool Function PickSetting(String setting, Int low, Int high)
+	Int value = GetModSettingInt(setting)
+	String[] entries = Utility.CreateStringArray(high - low + 2)
+	Int i = 0
+	While i <= high - low
+		entries[i] = (low + i) as String
+		If low + i == value
+			entries[i] = entries[i] + Phrase("menuSelected", "  (now)")
+		EndIf
+		i += 1
+	EndWhile
+	entries[i] = Phrase("menuBack", "Back")
+	Int pick = PickFromList(entries)
+	If pick < 0 || pick > high - low || low + pick == value
+		Return False
+	EndIf
+	SetModSettingInt(setting, low + pick)
+	Return True
+EndFunction
+
+Bool Function PickCustomerSex()
+	Int value = GetModSettingInt("iCustomerSex:General")
+	String[] entries = new String[4]
+	Int i = 0
+	While i < 3
+		entries[i] = CustomerSexName(i)
+		If i == value
+			entries[i] = entries[i] + Phrase("menuSelected", "  (now)")
+		EndIf
+		i += 1
+	EndWhile
+	entries[3] = Phrase("menuBack", "Back")
+	Int pick = PickFromList(entries)
+	If pick < 0 || pick > 2 || pick == value
+		Return False
+	EndIf
+	SetModSettingInt("iCustomerSex:General", pick)
+	Return True
+EndFunction
+
+String Function CustomerSexName(Int sex)
+	If sex == 1
+		Return Phrase("menuSexWomen", "Women only")
+	ElseIf sex == 2
+		Return Phrase("menuSexHalf", "Half and half")
+	EndIf
+	Return Phrase("menuSexMen", "Men only")
+EndFunction
+
+; The brothel list, then a second list to make sure; True when one was closed.
+Bool Function PickBrothelToClose()
+	If BrothelCount() == 0
+		Debug.Notification(Phrase("menuNoBrothel", "You have no brothel to close."))
+		Return False
+	EndIf
+	String[] entries = Utility.CreateStringArray(MaxUserBrothels + 1)
+	Int[] slots = Utility.CreateIntArray(MaxUserBrothels + 1, -1)
+	Int count = 0
+	Int i = 0
+	While i < MaxUserBrothels
+		If brothelCells[i]
+			entries[count] = (i + 1) + ": " + brothelCells[i].GetName()
+			slots[count] = i
+			count += 1
+		EndIf
+		i += 1
+	EndWhile
+	entries[count] = Phrase("menuBack", "Back")
+	entries = Utility.ResizeStringArray(entries, count + 1)
+	Int pick = PickFromList(entries)
+	If pick < 0 || pick >= count
+		Return False
+	EndIf
+	Int slot = slots[pick]
+	String[] confirm = new String[2]
+	confirm[0] = Phrase("menuCloseConfirm", "Close ") + brothelCells[slot].GetName() + Phrase("menuCloseConfirmAfter", "")
+	confirm[1] = Phrase("menuBack", "Back")
+	If PickFromList(confirm) != 0
+		Return False
+	EndIf
+	CloseBrothel(slot)
+	Return True
+EndFunction
+
+; Takes the worker at this place off the list; a hired worker leaves the game with it.
+Function RemoveWorkerAt(Int index)
+	Actor worker = workers[index]
+	workers[index] = workers[workerCount - 1]
+	workers[workerCount - 1] = None
+	workerCount -= 1
+	If worker
+		worker.RemoveFromFaction(WorkerFaction())
+		If IsHiredWorker(worker)
+			worker.Disable()
+			worker.Delete()
+		EndIf
+	EndIf
 EndFunction
 
 ; A humanoid NPC: has ActorTypeNPC, so creatures, animals and the like are left out.
@@ -1490,6 +2260,7 @@ EndFunction
 Event OnConfigOpen()
 	DropMissingWorkers()
 	ShowWorkerCount()
+	ShowBrothelCount()
 	ShowOwner()
 	ShowLevels()
 EndEvent
@@ -1500,6 +2271,7 @@ Event OnPageSelect(String a_page)
 	EndIf
 	RefreshWorkerMenu()
 	RefreshOwnerMenu()
+	RefreshBrothelMenu()
 	ShowLevels()
 	RefreshMenu()
 EndEvent
@@ -1546,11 +2318,12 @@ Function UnregisterPickedWorker()
 		index = workerMenuNames.Find(GetModSettingString("sWorkerPick:General"))
 	EndIf
 	If index >= 0 && index < workerCount
-		workers[index].RemoveFromFaction(WorkerFaction())
-		workers[index] = workers[workerCount - 1]
-		workers[workerCount - 1] = None
-		workerCount -= 1
-		Debug.Notification("$SNB_WorkerRemoved")
+		If IsHiredWorker(workers[index]) && IsInDeal(workers[index])
+			Debug.Notification("$SNB_WorkerBusy")
+		Else
+			RemoveWorkerAt(index)
+			Debug.Notification("$SNB_WorkerRemoved")
+		EndIf
 	EndIf
 	RefreshWorkerMenu()
 	RefreshMenu()
@@ -1580,21 +2353,21 @@ Function ResetDeals()
 		DeleteSpot(i)
 		i += 1
 	EndWhile
-	dealBeds = new ObjectReference[6]
-	dealSpots = new ObjectReference[6]
-	dealCenters = new ObjectReference[6]
-	dealWorkers = new Actor[6]
-	dealCustomers = new Actor[6]
-	dealStates = new Int[6]
-	dealThreads = new Int[6]
-	dealSerials = new Int[6]
-	dealStarted = new Float[6]
-	dealIdleRuns = new Int[6]
-	dealPaid = new Bool[6]
-	dealPaidWorker = new Int[6]
-	dealPaidOwner = new Int[6]
-	dealSolicited = new Bool[6]
-	dealAnsweredAt = new Float[6]
+	dealBeds = new ObjectReference[13]
+	dealSpots = new ObjectReference[13]
+	dealCenters = new ObjectReference[13]
+	dealWorkers = new Actor[13]
+	dealCustomers = new Actor[13]
+	dealStates = new Int[13]
+	dealThreads = new Int[13]
+	dealSerials = new Int[13]
+	dealStarted = new Float[13]
+	dealIdleRuns = new Int[13]
+	dealPaid = new Bool[13]
+	dealPaidWorker = new Int[13]
+	dealPaidOwner = new Int[13]
+	dealSolicited = new Bool[13]
+	dealAnsweredAt = new Float[13]
 EndFunction
 
 ; How many workers may be with customers at once (MCM, 1 to MaxConcurrentWorkers). The player's
@@ -1714,9 +2487,30 @@ Function MarkCustomerSpot(Int slot)
 	dealSpots[slot] = dealCustomers[slot].PlaceAtMe(Game.GetForm(0x00003B), 1, False, False) ; XMarker
 EndFunction
 
-; The nearest bed in the brothel that nobody uses, sleeps in, or has been given to another pair; a
-; real bed before any bedroll. The furniture in range is scanned directly: SexLab's FindBeds left out
-; the Bannered Mare's rented beds, and its FindBed with IgnoreUsed returns beds in use.
+; Held by the pair picking a bed (see StartBrothelScene); a pick that never let go (a thread cut off
+; by a load) is taken over after BedPickTimeoutSeconds.
+Bool pickingBed
+Float pickingBedSince
+Float Property BedPickTimeoutSeconds = 15.0 AutoReadOnly
+
+Function LockBedPick()
+	; The time is read before the check, and the flag and its time are set together: a call to
+	; another script lets other threads in, and one coming in between them read the old time, took
+	; the lock as stale and picked the same bed.
+	Float now = Utility.GetCurrentRealTime()
+	While pickingBed && now - pickingBedSince < BedPickTimeoutSeconds
+		Utility.Wait(0.2)
+		now = Utility.GetCurrentRealTime()
+	EndWhile
+	pickingBed = True
+	pickingBedSince = now
+EndFunction
+
+; The best bed in the brothel that nobody uses, sleeps in, stands on, or has been given to another
+; pair: a double bed before a single one (SexLab's bed scenes are made for a double bed and spill
+; over a single one), a single bed before a bedroll, and the nearest of the kind. The furniture in
+; range is scanned directly: SexLab's FindBeds left out the Bannered Mare's rented beds, and its
+; FindBed with IgnoreUsed returns beds in use.
 ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] positions)
 	ObjectReference[] found = PO3_SKSEFunctions.FindAllReferencesOfFormType(worker, FormTypeFurniture, BedSearchRadius)
 	Bool logging = GetModSettingBool("bDebugLog:General")
@@ -1724,9 +2518,8 @@ ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] p
 		DebugLog("Bed search for " + worker.GetDisplayName() + ": " + found.Length + " furniture in range")
 	EndIf
 	ObjectReference bed = None
-	ObjectReference bedroll = None
+	Int bedTypeChosen = 0
 	Float bedDistance = 0.0
-	Float bedrollDistance = 0.0
 	; With no furniture P+ offers every scene; on furniture it knows, only that furniture's. 1.6x
 	; takes only the beds in its own list, which BedTypeOf already keeps to, so it needs no check.
 	Int anywhereCount = 0
@@ -1741,17 +2534,18 @@ ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] p
 			Float distance = worker.GetDistance(candidate)
 			Float dz = candidate.GetPositionZ() - worker.GetPositionZ()
 			Bool usable = !candidate.IsDisabled() && candidate.GetParentCell() == brothelCell && Math.abs(dz) <= BedSearchRadiusZ \
-				&& dealBeds.Find(candidate) < 0 && sexLab.IsBedAvailable(candidate)
+				&& dealBeds.Find(candidate) < 0 && sexLab.IsBedAvailable(candidate) && !BedOccupied(candidate, positions)
 			If logging
 				DebugLog("  " + candidate.GetDisplayName() + " [" + candidate.GetFormID() + "] " \
 					+ PO3_SKSEFunctions.GetFormEditorID(candidate.GetBaseObject()) + " type=" + bedType \
 					+ " sexLabBed=" + IsSexLabBed(sexLab, candidate) \
 					+ " dist=" + (distance as Int) + " dz=" + (dz as Int) \
-					+ " sameCell=" + (candidate.GetParentCell() == brothelCell) + " takenByPair=" + (dealBeds.Find(candidate) >= 0) \
+					+ " sameCell=" + (candidate.GetParentCell() == brothelCell) + " takenByPair=" + (dealBeds.Find(candidate) >= 0) + " occupied=" + BedOccupied(candidate, positions) \
 					+ " available=" + sexLab.IsBedAvailable(candidate) + " usable=" + usable)
 			EndIf
-			If usable && !legacySexLab && ((bedType == BedTypeBedroll && (!bedroll || distance < bedrollDistance)) \
-					|| (bedType != BedTypeBedroll && (!bed || distance < bedDistance)))
+			; SexLab's bed types rank them: 3 double, 2 single, 1 bedroll.
+			Bool better = !bed || bedType > bedTypeChosen || (bedType == bedTypeChosen && distance < bedDistance)
+			If usable && better && !legacySexLab
 				; Only a candidate that would be chosen is checked, as the lookup takes a moment.
 				Int onBedCount = skyrimnet_BrothelSLP.SceneCount(sexLab, positions, "", 2, candidate)
 				If onBedCount == 0 || onBedCount >= anywhereCount
@@ -1761,23 +2555,14 @@ ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] p
 					DebugLog("    SexLab scenes here: " + onBedCount + " of " + anywhereCount + "; known bed=" + usable)
 				EndIf
 			EndIf
-			If usable
-				If bedType == BedTypeBedroll
-					If !bedroll || distance < bedrollDistance
-						bedroll = candidate
-						bedrollDistance = distance
-					EndIf
-				ElseIf !bed || distance < bedDistance
-					bed = candidate
-					bedDistance = distance
-				EndIf
+			If usable && better
+				bed = candidate
+				bedTypeChosen = bedType
+				bedDistance = distance
 			EndIf
 		EndIf
 		i += 1
 	EndWhile
-	If !bed
-		bed = bedroll
-	EndIf
 	If logging
 		If bed
 			DebugLog("  -> chose " + bed.GetDisplayName() + " [" + bed.GetFormID() + "]")
@@ -1845,6 +2630,7 @@ Function ClearStalledDeals()
 					DebugLog("Scene for " + dealWorkers[i].GetDisplayName() + " and " + dealCustomers[i].GetDisplayName() \
 						+ " stopped without an end hook; deal cleared")
 				EndIf
+				StepOffBed(i)
 				ReleaseDeal(i)
 			EndIf
 		ElseIf dealStates[i] == DealInScene
@@ -1878,6 +2664,9 @@ Function ServeCustomer(Bool quiet)
 	Actor worker = PickWorker(sexLab, PlayerInAutoServe())
 	If !worker
 		Notify("$SNB_NoWorker", quiet)
+		If !quiet && GetModSettingBool("bDebugLog:General")
+			LogWorkersNotFree(sexLab)
+		EndIf
 		Return
 	EndIf
 	Actor customer = PickCustomer(sexLab, worker)
@@ -1932,7 +2721,7 @@ Function ServePair(SexLabFramework sexLab, Actor worker, Actor customer, Bool qu
 		dealStates[slot] = DealAccepted
 		PayForDeal(slot)
 		SkyrimNetApi.DirectNarration(worker.GetDisplayName() + " accepts " + customer.GetDisplayName() + "'s offer, takes the " \
-			+ GetModSettingInt("iPayment:General") + " gold he has just handed over and agrees to spend the night with " + customer.GetDisplayName() \
+			+ GetModSettingInt("iPayment:General") + " gold " + HeOf(customer) + " has just handed over and agrees to spend the night with " + customer.GetDisplayName() \
 			+ ". She now tells " + customer.GetDisplayName() + " so in her own words, " + AcceptManner(WorkerLevel(worker)) + "." + LevelContext(worker), worker, customer)
 	EndIf
 
@@ -2112,7 +2901,7 @@ EndEvent
 ; lastAskAnswered says whether that applied. playerSpeaksFirst: the
 ; player opens the conversation with the picked line (the owner recommending a worker). slot -1:
 ; no deal yet.
-Int Function AskPlayer(Actor customer, String theme, String situation, String[] intents, String tag, Int slot, Bool customerAnswers = True, Bool playerSpeaksFirst = False)
+Int Function AskPlayer(Actor customer, String theme, String situation, String[] intents, String tag, Int slot, Bool customerAnswers = True, Bool playerSpeaksFirst = False, String answerNote = "")
 	skyrimnet_BrothelChoices engine = Choices()
 	If !engine || !intents
 		Return ChoiceUnavailable
@@ -2127,7 +2916,7 @@ Int Function AskPlayer(Actor customer, String theme, String situation, String[] 
 	choiceIndex = ChoiceNone
 	choiceEnded = False
 	lastAskAnswered = customerAnswers || playerSpeaksFirst
-	Bool started = engine.StartFromApi(customer, playerSpeaksFirst, theme, situation, intents, tag, lastAskAnswered)
+	Bool started = engine.StartFromApi(customer, playerSpeaksFirst, theme, situation, intents, tag, lastAskAnswered, answerNote)
 	If !started
 		choiceTag = ""
 		Return ChoiceUnavailable
@@ -2342,7 +3131,37 @@ String Function OfferNarration(Actor customer, Actor worker)
 		+ worker.GetDisplayName() + " owes nothing and is the one paid. " + customer.GetDisplayName() + " has walked up to " \
 		+ worker.GetDisplayName() + " and wants " + pronoun + " company tonight. " + he + " has not said so yet and now makes the offer in " \
 		+ his + " own words, offering " + payment + " gold, then waits for an answer. " + he + " has not paid yet: the gold changes hands " \
-		+ "the moment " + worker.GetDisplayName() + " agrees, not before." + LevelContext(worker)
+		+ "the moment " + worker.GetDisplayName() + " agrees, not before." \
+		+ ApproachStyle(customer.GetDisplayName(), "customer") + LevelContext(worker)
+EndFunction
+
+; Every offer was told the same thing, and came out as the same line ("50 gold for your time"). A
+; way of making it is picked from approaches.json (Data/SKSE/Plugins/skyrimnet_Brothel/approaches.json,
+; one list for customers, one for workers), never the same one twice in a row.
+String Property ApproachesFile = "../skyrimnet_Brothel/approaches.json" AutoReadOnly
+Int lastCustomerApproach = -1
+Int lastWorkerApproach = -1
+
+String Function ApproachStyle(String speaker, String listKey)
+	Int count = JsonUtil.StringListCount(ApproachesFile, listKey)
+	If count == 0
+		Return ""
+	EndIf
+	Int last = lastCustomerApproach
+	If listKey == "worker"
+		last = lastWorkerApproach
+	EndIf
+	Int index = Utility.RandomInt(0, count - 1)
+	If index == last && count > 1
+		index = (index + 1) % count
+	EndIf
+	If listKey == "worker"
+		lastWorkerApproach = index
+	Else
+		lastCustomerApproach = index
+	EndIf
+	Return " This time " + speaker + " " + JsonUtil.StringListGet(ApproachesFile, listKey, index) \
+		+ ". The price can come up anywhere, even last; it is not simply stated as a fixed phrase."
 EndFunction
 
 ; What the LLM is told about the worker's feelings for the work and about the house, by level.
@@ -2372,12 +3191,17 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag 
 	ObjectReference center = None
 	Int furniturePref = 1
 	If GetModSettingInt("iBedMode:General") == 1
+		; PickBed waits on SexLab partway through, and the bed counts as taken only once it is in
+		; dealBeds: two pairs picking at once chose the same bed, and SexLab put the second pair on
+		; it too (one of them floating above the bed). One pair picks and claims at a time.
+		LockBedPick()
 		center = PickBed(sexLab, worker, positions)
 		; A picked position the bed has no scene for (standing, say) is played off the bed.
 		If center && positionTag != "" && !HasScenes(sexLab, positions, positionTag, 2, center)
 			center = None
 		EndIf
 		dealBeds[slot] = center
+		pickingBed = False
 		If center
 			furniturePref = 2
 		Else
@@ -2600,13 +3424,26 @@ Function ApproachWorker(Actor customer, Actor worker)
 	PO3_SKSEFunctions.SetLinkedRef(customer, worker, TalkLink())
 	ActorUtil.AddPackageOverride(customer, TravelPackage(), 100)
 	customer.EvaluatePackage()
+	; A walker caught on a door frame or furniture never arrives: once he has stopped getting closer
+	; for ApproachStuckSeconds (or ApproachTimeoutSeconds have passed), he is placed in front of the
+	; other one.
 	Float waited = 0.0
-	While waited < 20.0 && customer.GetDistance(worker) > TalkDistance
+	Float stuckFor = 0.0
+	Float closest = customer.GetDistance(worker)
+	While waited < ApproachTimeoutSeconds && stuckFor < ApproachStuckSeconds && customer.GetDistance(worker) > TalkDistance
 		Utility.Wait(0.5)
 		waited += 0.5
+		Float distance = customer.GetDistance(worker)
+		If distance < closest - 20.0
+			closest = distance
+			stuckFor = 0.0
+		Else
+			stuckFor += 0.5
+		EndIf
 	EndWhile
-	If customer.GetDistance(worker) > 300.0
-		customer.MoveTo(worker, 100.0, 0.0, 0.0)
+	If customer.GetDistance(worker) > TalkDistance + 50.0
+		Float angle = worker.GetAngleZ()
+		customer.MoveTo(worker, 90.0 * Math.Sin(angle), 90.0 * Math.Cos(angle), 0.0)
 	EndIf
 EndFunction
 
@@ -2662,9 +3499,12 @@ EndFunction
 ; over TalkTurnTimeoutSeconds is taken over.
 Bool Function AcquireTalk(Int slot, Int serial)
 	While DealAlive(slot, serial)
-		If !talking || Utility.GetCurrentRealTime() - talkingSince > TalkTurnTimeoutSeconds
+		; The time is read first: a call to another script lets other threads in, and one coming in
+		; between "talking = True" and its time took the turn as held too long and talked over it.
+		Float now = Utility.GetCurrentRealTime()
+		If !talking || now - talkingSince > TalkTurnTimeoutSeconds
 			talking = True
-			talkingSince = Utility.GetCurrentRealTime()
+			talkingSince = now
 			Return True
 		EndIf
 		KeepClose(slot)
@@ -2695,6 +3535,41 @@ EndFunction
 
 ; A free worker in the brothel, at random; withPlayer: the player too, when the player works.
 ; minLevel: only workers of at least this level (the low ones do not invite customers).
+; Debug log: why each registered worker was passed over when none was free.
+Function LogWorkersNotFree(SexLabFramework sexLab)
+	DebugLog("No free worker (" + workerCount + " registered, " + WorkerDealCount() + " deals open):")
+	Int i = 0
+	While i < workerCount
+		Actor worker = workers[i]
+		String why = "free?"
+		If !worker
+			why = "empty place"
+		ElseIf worker.IsDead()
+			why = "dead"
+		ElseIf worker.GetParentCell() != brothelCell
+			why = "not in the brothel"
+		Else
+			Int slot = 0
+			While slot < DealSlots && why == "free?"
+				If dealStates[slot] != DealFree && (dealWorkers[slot] == worker || dealCustomers[slot] == worker)
+					why = "in deal " + slot + " (state " + dealStates[slot] + ", " \
+						+ ((Utility.GetCurrentRealTime() - dealStarted[slot]) as Int) + " s)"
+				EndIf
+				slot += 1
+			EndWhile
+			If why == "free?" && sexLab.IsActorActive(worker)
+				why = "in a SexLab scene"
+			EndIf
+		EndIf
+		String name = "None"
+		If worker
+			name = worker.GetDisplayName()
+		EndIf
+		DebugLog("  " + name + ": " + why)
+		i += 1
+	EndWhile
+EndFunction
+
 Actor Function PickWorker(SexLabFramework sexLab, Bool withPlayer = False, Int minLevel = 0)
 	Actor[] present = new Actor[65]
 	Int count = 0
@@ -2773,7 +3648,10 @@ EndFunction
 Bool Function IsFreeCustomer(SexLabFramework sexLab, Actor candidate, Actor worker)
 	; The cell scan also returns NPCs placed there but disabled, or not loaded, until some quest needs
 	; them; SexLab cannot use them.
-	If !candidate || candidate == worker || candidate == brothelOwner || candidate.IsDisabled() || !candidate.Is3DLoaded() \
+	; A registered worker is never a customer, even one who was in the town's pool before she was
+	; registered.
+	If !candidate || candidate == worker || candidate == brothelOwner || workers.Find(candidate) >= 0 \
+			|| candidate.IsDisabled() || !candidate.Is3DLoaded() \
 			|| candidate.IsDead() || candidate.IsInCombat() \
 			|| candidate.GetParentCell() != brothelCell || IsInDeal(candidate) || sexLab.IsActorActive(candidate)
 		Return False
@@ -2914,6 +3792,11 @@ EndFunction
 
 ; Saves from before levels: the brothel's total starts from what its workers have been paid.
 Function SyncBrothelGross()
+	; Once only: a new brothel (there can be several now) starts from nothing.
+	If brothelGrossSynced
+		Return
+	EndIf
+	brothelGrossSynced = True
 	If brothelGross > 0
 		Return
 	EndIf
@@ -3160,7 +4043,11 @@ Function WorkerSolicits(SexLabFramework sexLab, Actor worker, Actor customer)
 	EndIf
 	dealStates[slot] = DealPending
 	Float offeredAt = Utility.GetCurrentRealTime()
-	SkyrimNetApi.DirectNarration(SolicitNarration(worker, customer), worker, customer)
+	; Left to the LLM, the customer turned nearly every invitation down. The answer is rolled
+	; against the MCM's chance instead; the narration tells him which it is, and his answer in
+	; conversation (AcceptWorkerOffer / DeclineWorkerOffer) no longer decides it.
+	Bool willAccept = Utility.RandomInt(1, 100) <= GetModSettingInt("iSolicitAccept:General")
+	SkyrimNetApi.DirectNarration(SolicitNarration(worker, customer, willAccept), worker, customer)
 	Float waited = 0.0
 	While DealAlive(slot, serial) && dealStates[slot] == DealPending && waited < DealTimeoutSeconds && !AnswerSpoken(slot)
 		KeepClose(slot)
@@ -3172,9 +4059,10 @@ Function WorkerSolicits(SexLabFramework sexLab, Actor worker, Actor customer)
 		Return
 	EndIf
 	If GetModSettingBool("bDebugLog:General")
-		DebugLog("Invitation: " + worker.GetDisplayName() + " to " + customer.GetDisplayName() + ", answer " + dealStates[slot])
+		DebugLog("Invitation: " + worker.GetDisplayName() + " to " + customer.GetDisplayName() + ", rolled " + willAccept \
+			+ ", answer " + dealStates[slot])
 	EndIf
-	If dealStates[slot] == DealRefused
+	If !willAccept
 		Debug.Notification("$SNB_CustomerDeclined")
 		ReleaseTalk()
 		ReleaseDeal(slot)
@@ -3191,13 +4079,24 @@ Function WorkerSolicits(SexLabFramework sexLab, Actor worker, Actor customer)
 EndFunction
 
 ; Tells the worker to make her offer now, in her own words; nothing is paid before he agrees.
-String Function SolicitNarration(Actor worker, Actor customer)
+; The customer's answer to an invitation, rolled beforehand, as the LLM is told it.
+String Function SolicitAnswer(Actor customer, Bool willAccept)
+	String c = customer.GetDisplayName()
+	If willAccept
+		Return " " + c + " came to the brothel tonight for exactly this, likes what " + HeOf(customer) + " sees, and is going to say yes."
+	EndIf
+	Return " " + c + " is not in the mood tonight and is going to turn the offer down politely."
+EndFunction
+
+String Function SolicitNarration(Actor worker, Actor customer, Bool willAccept)
 	String w = worker.GetDisplayName()
 	String c = customer.GetDisplayName()
 	Int payment = GetModSettingInt("iPayment:General")
+	String answer = SolicitAnswer(customer, willAccept)
 	Return w + " sells her company for gold at this brothel; " + c + " is here as a customer and has not been with anyone yet. " \
-		+ w + " has walked up to " + c + " and now, in her own words, offers him her company tonight for " + payment \
-		+ " gold, then waits for his answer. Nothing has been paid yet: " + c + " pays the moment he agrees." + LevelContext(worker)
+		+ w + " has walked up to " + c + " and now, in her own words, offers " + HimOf(customer) + " her company tonight for " + payment \
+		+ " gold, then waits for " + HisOf(customer) + " answer. Nothing has been paid yet: " + c + " pays the moment " + HeOf(customer) + " agrees." \
+		+ answer + ApproachStyle(w, "worker") + " (In a way that fits how she feels about the work.)" + LevelContext(worker)
 EndFunction
 
 ; The player's topic, as a worker: the player offers this person their company.
@@ -3241,16 +4140,28 @@ Function PlayerSolicits(Actor customer)
 	Int payment = GetModSettingInt("iPayment:General")
 	String p = player.GetDisplayName()
 	String c = customer.GetDisplayName()
+	; As with the workers' invitations, the answer is rolled against the MCM's chance and the
+	; customer is told which it is (see WorkerSolicits).
+	Bool willAccept = Utility.RandomInt(1, 100) <= GetModSettingInt("iSolicitAccept:General")
 	Int picked = 0
 	If ChoicesReady()
 		String[] intents = new String[3]
-		intents[0] = "offer " + c + " your company tonight for " + payment + " gold, warmly"
-		intents[1] = "offer " + c + " your company tonight for " + payment + " gold, teasingly"
+		; Two different ways from the worker list in approaches.json, so the replies differ each time.
+		Int styles = JsonUtil.StringListCount(ApproachesFile, "worker")
+		If styles >= 2
+			Int first = Utility.RandomInt(0, styles - 1)
+			Int second = (first + Utility.RandomInt(1, styles - 1)) % styles
+			intents[0] = "offer " + c + " your company tonight for " + payment + " gold; you " + JsonUtil.StringListGet(ApproachesFile, "worker", first)
+			intents[1] = "offer " + c + " your company tonight for " + payment + " gold; you " + JsonUtil.StringListGet(ApproachesFile, "worker", second)
+		Else
+			intents[0] = "offer " + c + " your company tonight for " + payment + " gold, warmly"
+			intents[1] = "offer " + c + " your company tonight for " + payment + " gold, teasingly"
+		EndIf
 		intents[2] = "say it was nothing after all"
 		picked = AskPlayer(customer, p + " offers " + c + " a night together for gold", \
 			p + " works at this brothel, selling their company for gold. " + c + " is here as a customer. " + p + " walks up to " + c \
-			+ " to offer a night together for " + payment + " gold. Nothing has been paid yet: " + c + " pays the moment he agrees.", \
-			intents, ChoicesTagSolicit, slot, True, True)
+			+ " to offer a night together for " + payment + " gold. Nothing has been paid yet: " + c + " pays the moment " + HeOf(customer) + " agrees.", \
+			intents, ChoicesTagSolicit, slot, True, True, SolicitAnswer(customer, willAccept))
 	EndIf
 	If !DealAlive(slot, serial)
 		ReleaseTalk()
@@ -3261,9 +4172,12 @@ Function PlayerSolicits(Actor customer)
 		ReleaseDeal(slot)
 		Return
 	EndIf
-	; His answer may still be on its way.
+	; Player Choices has the customer answer the player's line, told the rolled answer with it
+	; (AskPlayer's answerNote): left to himself he turned nearly every offer down, and a second
+	; answer of the brothel's own came after SkyrimNet's, contradicting it. His answer may still be
+	; on its way.
 	Float waited = 0.0
-	While DealAlive(slot, serial) && dealStates[slot] == DealPending && waited < 10.0 && !AnswerSpoken(slot)
+	While DealAlive(slot, serial) && waited < 10.0 && !AnswerSpoken(slot)
 		Utility.Wait(0.5)
 		waited += 0.5
 	EndWhile
@@ -3271,7 +4185,10 @@ Function PlayerSolicits(Actor customer)
 		ReleaseTalk()
 		Return
 	EndIf
-	If dealStates[slot] == DealRefused
+	If GetModSettingBool("bDebugLog:General")
+		DebugLog("Invitation: " + p + " to " + c + ", rolled " + willAccept + ", answer " + dealStates[slot])
+	EndIf
+	If !willAccept
 		Debug.Notification("$SNB_CustomerDeclined")
 		ReleaseTalk()
 		ReleaseDeal(slot)
@@ -3306,6 +4223,154 @@ Event OnBrothelSceneEnd(Int aiThreadID, Bool abHasPlayer)
 	EndIf
 	Actor worker = dealWorkers[slot]
 	Int kept = dealPaidWorker[slot]
+	StepOffBed(slot)
 	ReleaseDeal(slot)
 	RecordSale(worker, kept)
 EndEvent
+
+; SexLab leaves the pair standing where the scene was: on the bed, in the way of the next pair put
+; on it. Once SexLab has let them go, an NPC still on the bed is moved off it, to where the customer
+; stood before walking over (dealSpots). The bed stays the pair's until then.
+Float Property OnBedDistance = 120.0 AutoReadOnly
+
+Function StepOffBed(Int slot)
+	ObjectReference bed = dealBeds[slot]
+	If !bed || !dealSpots[slot]
+		Return
+	EndIf
+	Utility.Wait(1.5)
+	Actor player = Game.GetPlayer()
+	Actor[] pair = new Actor[2]
+	pair[0] = dealCustomers[slot]
+	pair[1] = dealWorkers[slot]
+	Int i = 0
+	While i < 2
+		Actor one = pair[i]
+		If one && one != player && !one.IsDead() && one.GetDistance(bed) <= OnBedDistance
+			one.MoveTo(dealSpots[slot], 60.0 * i, 0.0, 0.0)
+		EndIf
+		i += 1
+	EndWhile
+EndFunction
+
+; Whether someone other than this pair stands on the bed (a pair SexLab let go of, someone passing).
+Bool Function BedOccupied(ObjectReference bed, Actor[] positions)
+	Actor[] near = MiscUtil.ScanCellNPCs(bed, OnBedDistance * 0.6, None, True)
+	Int i = 0
+	While i < near.Length
+		If near[i] && near[i] != positions[0] && near[i] != positions[1]
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+; ---------------------------------------------------------------------------------------------
+; Workers' small talk
+; ---------------------------------------------------------------------------------------------
+
+; With "Workers chat" on (MCM), every so often two free NPC workers standing near each other in
+; the brothel gossip between customers about a topic from gossip.json (Data/SKSE/Plugins/
+; skyrimnet_Brothel/gossip.json: "topics", each with its line in "examples"). Only while the player
+; is in the brothel and no one else is talking (AcquireTalk's flag), so a deal's conversation is
+; never talked over.
+
+String Property GossipFile = "../skyrimnet_Brothel/gossip.json" AutoReadOnly
+Float Property ChatDistance = 1024.0 AutoReadOnly
+; Real time (this session) of the next chat; set again on every load.
+Float chatNextAt
+; The topic of the last chat, not picked twice in a row.
+Int lastChatTopic = -1
+
+Float Function ChatIntervalSeconds()
+	Int seconds = GetModSettingInt("iChatInterval:General")
+	If seconds < 30
+		seconds = 30
+	EndIf
+	Return seconds as Float
+EndFunction
+
+Bool Function ChatDue()
+	If !GetModSettingBool("bWorkerChat:General") || Utility.GetCurrentRealTime() < chatNextAt
+		Return False
+	EndIf
+	chatNextAt = Utility.GetCurrentRealTime() + ChatIntervalSeconds()
+	Return True
+EndFunction
+
+; Can this worker stop for a chat: an NPC worker (not the owner) in the brothel, free of deals,
+; scenes and fights.
+Bool Function FreeToChat(SexLabFramework sexLab, Actor worker)
+	Return worker && worker != brothelOwner && !worker.IsDead() && worker.GetParentCell() == brothelCell \
+		&& !IsInDeal(worker) && !sexLab.IsActorActive(worker) && !worker.IsInCombat()
+EndFunction
+
+Function WorkerChatRound()
+	If !brothelCell || Game.GetPlayer().GetParentCell() != brothelCell || Utility.IsInMenuMode() \
+			|| (talking && Utility.GetCurrentRealTime() - talkingSince <= TalkTurnTimeoutSeconds)
+		Return
+	EndIf
+	Int topicCount = JsonUtil.StringListCount(GossipFile, "topics")
+	If topicCount == 0
+		Return
+	EndIf
+	SexLabFramework sexLab = SexLabUtil.GetAPI()
+	; A random free worker, then the free worker nearest her.
+	Actor[] free = new Actor[64]
+	Int count = 0
+	Int i = 0
+	While i < workerCount
+		If FreeToChat(sexLab, workers[i])
+			free[count] = workers[i]
+			count += 1
+		EndIf
+		i += 1
+	EndWhile
+	If count < 2
+		Return
+	EndIf
+	Actor speaker = free[Utility.RandomInt(0, count - 1)]
+	Actor listener = None
+	Float nearest = ChatDistance
+	i = 0
+	While i < count
+		If free[i] != speaker && speaker.GetDistance(free[i]) <= nearest
+			listener = free[i]
+			nearest = speaker.GetDistance(free[i])
+		EndIf
+		i += 1
+	EndWhile
+	If !listener
+		Return
+	EndIf
+	Int topicIndex = Utility.RandomInt(0, topicCount - 1)
+	If topicIndex == lastChatTopic && topicCount > 1
+		topicIndex = (topicIndex + 1) % topicCount
+	EndIf
+	lastChatTopic = topicIndex
+	String s = speaker.GetDisplayName()
+	String l = listener.GetDisplayName()
+	String narration = s + " and " + l + " both work at this brothel. Between customers, " + s + " starts gossiping with " + l \
+		+ " the way working girls talk among themselves: frank, wry, a little bitter at times. Topic: " \
+		+ JsonUtil.StringListGet(GossipFile, "topics", topicIndex)
+	String example = JsonUtil.StringListGet(GossipFile, "examples", topicIndex)
+	If example != ""
+		narration += " The kind of thing one of them might say: \"" + example + "\""
+	EndIf
+	narration += " " + s + " speaks a few lines and " + l + " answers in kind."
+	; The turn is checked again here, with nothing in between that lets another thread in: one may
+	; have taken it while the pair was being picked.
+	Float startedAt = Utility.GetCurrentRealTime()
+	If talking && startedAt - talkingSince <= TalkTurnTimeoutSeconds
+		Return
+	EndIf
+	talking = True
+	talkingSince = startedAt
+	SkyrimNetApi.DirectNarration(narration, speaker, listener)
+	WaitForSpeech(startedAt, -1)
+	ReleaseTalk()
+	If GetModSettingBool("bDebugLog:General")
+		DebugLog("Chat: " + s + " and " + l + ", topic " + topicIndex)
+	EndIf
+EndFunction

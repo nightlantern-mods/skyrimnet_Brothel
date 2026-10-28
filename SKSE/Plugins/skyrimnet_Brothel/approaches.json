@@ -1,0 +1,40 @@
+{
+  "stringList": {
+    "customer": [
+      "opens with a compliment on how good the worker looks tonight before getting to the point",
+      "is shy and awkward, stumbling over the words and blushing",
+      "is blunt and businesslike, as if haggling at a market stall",
+      "starts with a joke or a bit of banter",
+      "complains about a long, hard day and wants something to forget it",
+      "has had a few drinks and is a little too loud about it",
+      "acts like an old regular, as if the two of them already know each other",
+      "asks the worker's name first and makes small talk before asking",
+      "only hints at it, never quite saying it outright",
+      "jingles a coin purse and lets the gold do most of the talking",
+      "is nervous, admitting it is the first time in a place like this",
+      "brags about a recent stroke of luck and wants to celebrate",
+      "is gallant and courtly, as if courting a noble lady",
+      "grumbles that the price is steep but offers it anyway",
+      "leans in and asks quietly so the others will not hear",
+      "is lonely and a little sad, wanting company more than anything"
+    ],
+    "worker": [
+      "sits down beside the customer and starts with small talk",
+      "teases the customer about looking lonely tonight",
+      "compliments the customer's looks or gear",
+      "offers a drink first and slides into the offer from there",
+      "is direct and businesslike about it",
+      "plays a little shy and lets the customer make the next move",
+      "leans close and whispers the offer",
+      "jokes about the cold Skyrim nights and a warm bed",
+      "guesses the customer's trade from their clothes and plays on it",
+      "asks whether this is the customer's first time here",
+      "mentions that a room is free upstairs right now",
+      "claims to have picked the customer out of everyone in the room",
+      "is tired and frank, near the end of a long night",
+      "hums a line of a bawdy tavern song before making the offer",
+      "presents the price as a special bargain, just for tonight",
+      "asks what brought the customer to town, then turns it into an offer"
+    ]
+  }
+}

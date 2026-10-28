@@ -53,6 +53,9 @@ String requestTag
 ; False when the caller has the NPC react to the pick itself (StartFromApi with answers False): the player
 ; says the line and the conversation ends there.
 Bool npcAnswers = True
+; What the caller has already settled about the NPC's answer (StartFromApi's answerNote), told to the
+; NPC with the player's reply; "" for none.
+String answerNote
 
 ; Mod events for the brothel (custom signatures, sent with ModEvent):
 ;   skyrimnet_BrothelChoices_Started(Form akNpc, String asTag, Bool abPlayerStarts)
@@ -90,7 +93,7 @@ EndFunction
 ; Entry point for the brothel: the NPC speaks first (startsWithPlayer False) or the player does (True),
 ; with an optional theme and situation, optional reply intents and the caller's tag; answers False
 ; when the caller has the NPC react to the pick itself.
-Bool Function StartFromApi(Actor npc, Bool startsWithPlayer, String theme, String situationText, String[] replyIntents, String tag, Bool answers = True)
+Bool Function StartFromApi(Actor npc, Bool startsWithPlayer, String theme, String situationText, String[] replyIntents, String tag, Bool answers = True, String note = "")
 	If !npc || npc == Game.GetPlayer() || npc.IsDead() || !npc.Is3DLoaded() || !IsIdle()
 		Return False
 	EndIf
@@ -98,6 +101,7 @@ Bool Function StartFromApi(Actor npc, Bool startsWithPlayer, String theme, Strin
 		Start()
 	EndIf
 	npcAnswers = answers
+	answerNote = note
 	Return RequestConversation(npc, startsWithPlayer, theme, situationText, replyIntents, tag)
 EndFunction
 
@@ -654,7 +658,11 @@ Function PlayerAnswers(String reply, Bool alreadyVoiced, String intent)
 	If intent != ""
 		meaning = " (" + playerName + " means: " + intent + ")"
 	EndIf
-	SkyrimNetApi.DirectNarration(playerName + said + npcName + ": \"" + reply + "\"" + meaning + ". " \
+	String settled = ""
+	If answerNote != ""
+		settled = answerNote + " "
+	EndIf
+	SkyrimNetApi.DirectNarration(playerName + said + npcName + ": \"" + reply + "\"" + meaning + ". " + settled \
 		+ npcName + " replies to what " + playerName + " just said, in " + npcName + "'s own words, and brings this short conversation to a natural close.", \
 		speaker, player)
 	WaitForSpeech(ConfigFloat("speech_timeout", 40.0))

@@ -21,12 +21,33 @@
 					}
 				},
 				{
+					"id": "sBrothelCount:General",
+					"type": "text",
+					"text": "$SNB_BrothelCount",
+					"help": "$SNB_BrothelCountHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
 					"type": "text",
 					"text": "$SNB_Designate",
 					"help": "$SNB_DesignateHelp",
 					"action": {
 						"type": "CallFunction",
 						"function": "DesignateBrothel"
+					}
+				},
+				{
+					"id": "sBrothelPick:General",
+					"type": "menu",
+					"text": "$SNB_BrothelList",
+					"help": "$SNB_BrothelListHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString",
+						"options": [
+							"$SNB_None"
+						]
 					}
 				},
 				{
@@ -49,6 +70,20 @@
 						"step": 1,
 						"formatString": "{0}",
 						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iCustomerSex:General",
+					"type": "enum",
+					"text": "$SNB_CustomerSex",
+					"help": "$SNB_CustomerSexHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"$SNB_VisitorMen",
+							"$SNB_VisitorWomen",
+							"$SNB_CustomerHalf"
+						]
 					}
 				},
 				{
@@ -76,7 +111,7 @@
 					"help": "$SNB_MaxConcurrentHelp",
 					"valueOptions": {
 						"min": 1,
-						"max": 5,
+						"max": 12,
 						"step": 1,
 						"formatString": "{0}",
 						"sourceType": "ModSettingInt"
@@ -174,6 +209,24 @@
 					}
 				},
 				{
+					"type": "text",
+					"text": "$SNB_RegisterFollowers",
+					"help": "$SNB_RegisterFollowersHelp",
+					"action": {
+						"type": "CallFunction",
+						"function": "RegisterFollowers"
+					}
+				},
+				{
+					"type": "text",
+					"text": "$SNB_UnregisterFollowers",
+					"help": "$SNB_UnregisterFollowersHelp",
+					"action": {
+						"type": "CallFunction",
+						"function": "UnregisterFollowers"
+					}
+				},
+				{
 					"id": "sPickedLevel:General",
 					"type": "text",
 					"text": "$SNB_PickedLevel",
@@ -189,6 +242,36 @@
 					"help": "$SNB_PickedNextHelp",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderHired"
+				},
+				{
+					"id": "iHiredWorkers:General",
+					"type": "slider",
+					"text": "$SNB_HiredWorkers",
+					"help": "$SNB_HiredWorkersHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 10,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iHiredLevel:General",
+					"type": "slider",
+					"text": "$SNB_HiredLevel",
+					"help": "$SNB_HiredLevelHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 10,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
 					}
 				},
 				{
@@ -246,6 +329,45 @@
 					"help": "$SNB_SolicitIntervalHelp",
 					"valueOptions": {
 						"min": 10,
+						"max": 1800,
+						"step": 10,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iSolicitAccept:General",
+					"type": "slider",
+					"text": "$SNB_SolicitAccept",
+					"help": "$SNB_SolicitAcceptHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 100,
+						"step": 5,
+						"formatString": "{0}%",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderChat"
+				},
+				{
+					"id": "bWorkerChat:General",
+					"type": "toggle",
+					"text": "$SNB_WorkerChat",
+					"help": "$SNB_WorkerChatHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iChatInterval:General",
+					"type": "slider",
+					"text": "$SNB_ChatInterval",
+					"help": "$SNB_ChatIntervalHelp",
+					"valueOptions": {
+						"min": 30,
 						"max": 1800,
 						"step": 10,
 						"formatString": "{0}",
