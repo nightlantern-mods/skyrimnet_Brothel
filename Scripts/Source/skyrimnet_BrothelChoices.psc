@@ -151,6 +151,9 @@ Bool Function RequestConversation(Actor npc, Bool startsWithPlayer, String theme
 		+ ",\"max_replies\":" + mostReplies + "}"
 	conversationState = StateWaitingForLLM
 	stateSince = Utility.GetCurrentRealTime()
+	timingStart = stateSince
+	speakerReleased = False
+	Timing("LLM request sent")
 	SkyrimNetApi.RegisterPackageEx(npc, ApproachPackage, -1, False, PackageOwner, "Brothel Choices", False)
 	Int rc = SkyrimNetApi.SendCustomPromptToLLM(PromptName, ConfigString("variant", ""), context, Self, "skyrimnet_BrothelChoices", "OnConversationReady")
 	If rc != 1
@@ -207,6 +210,7 @@ Function OnConversationReady(String response, Int success)
 		Notify("msg_llm_failed", "SkyrimNet could not start the conversation.")
 		Return
 	EndIf
+	Timing("LLM lines ready (" + StringUtil.GetLength(response) + " chars)")
 	ParseResponse(response)
 	; SkyrimNet caps the reply at about 750 characters; a reply that reached the cap lost the end of
 	; its last line, so that line is dropped rather than offered half-written.
@@ -286,12 +290,14 @@ Function NpcSpeaks()
 	WaitForApproach(player)
 	ClearOtherSpeech()
 	ResetSpeechTracking()
+	Timing("NPC asked to say the opening line")
 	; Narration is taken as fact the speaker reacts to, so it says the line has not been said yet
 	; and is to be said word for word: the replies were written to answer exactly this line.
 	SkyrimNetApi.DirectNarration(npcName + " walks up to " + playerName + " to start a conversation and has not said anything yet. " \
 		+ npcName + " now says these exact words to " + playerName + ", word for word, without changing, shortening or adding anything: \"" \
 		+ openingLine + "\"", speaker, player)
 	WaitForSpeech(ConfigFloat("speech_timeout", 40.0))
+	Timing("NPC finished the opening line")
 	ChooseReply()
 EndFunction
 
@@ -314,6 +320,10 @@ Int speakerSentences
 Float lastSentenceEnd
 ; While the NPC answers the player, WaitForSpeech keeps them on the approach package.
 Bool holdSpeaker
+; The same for the player's own voice, which SkyrimNet plays for a line picked in the dialogue menu.
+Bool playerPlaying
+Bool playerStarted
+Float playerLastEnd
 
 Function RegisterSpeechEvents()
 	RegisterForModEvent("SkyrimNet_AudioStarted", "OnSkyrimNetAudioStarted")
@@ -322,8 +332,17 @@ EndFunction
 
 Event OnSkyrimNetAudioStarted(String eventName, String strArg, Float numArg, Form sender)
 	If speaker && sender == speaker
+		If !speakerStarted
+			Timing("NPC voice started")
+		EndIf
 		speakerPlaying = True
 		speakerStarted = True
+	ElseIf sender && sender == Game.GetPlayer()
+		If !playerStarted
+			Timing("player voice started")
+		EndIf
+		playerPlaying = True
+		playerStarted = True
 	EndIf
 EndEvent
 
@@ -332,8 +351,31 @@ Event OnSkyrimNetAudioEnded(String eventName, String strArg, Float numArg, Form 
 		speakerPlaying = False
 		speakerSentences += 1
 		lastSentenceEnd = Utility.GetCurrentRealTime()
+	ElseIf sender && sender == Game.GetPlayer()
+		playerPlaying = False
+		playerLastEnd = Utility.GetCurrentRealTime()
 	EndIf
 EndEvent
+
+; Waits for the player's voiced line to finish. SkyrimNet beta 29 dropped IsPlayerTTSFinished, so
+; this follows SkyrimNet's audio events instead, which every version sends. A line that never
+; starts (player voice off) is given startTimeout seconds, longer while SkyrimNet is still
+; generating speech; a line that started is waited for up to timeout seconds.
+Function WaitForPlayerLine(Float startTimeout, Float timeout)
+	Float started = Utility.GetCurrentRealTime()
+	Float now = started
+	While now - started < timeout
+		If playerStarted
+			If !playerPlaying && now - playerLastEnd >= 0.75 && SkyrimNetApi.GetSpeechQueueSize() == 0
+				Return
+			EndIf
+		ElseIf now - started >= startTimeout && SkyrimNetApi.GetSpeechQueueSize() == 0
+			Return
+		EndIf
+		Utility.Wait(0.25)
+		now = Utility.GetCurrentRealTime()
+	EndWhile
+EndFunction
 
 ; Ambient SkyrimNet chatter queued around the speaker (crowded places) would otherwise play first
 ; and hold the conversation up; the line that is playing now is allowed to finish.
@@ -341,6 +383,15 @@ Function ClearOtherSpeech()
 	If ConfigInt("interrupt_others", 1) != 0
 		SkyrimNetApi.PurgeDialogue(True)
 	EndIf
+EndFunction
+
+; How long each step of a conversation takes, in the Papyrus log: seconds since the request and
+; the absolute real time, to line up with the brothel's own "timing:" lines.
+Float timingStart
+
+Function Timing(String stage)
+	Float now = Utility.GetCurrentRealTime()
+	Debug.Trace("[SNB Timing] " + requestTag + " " + stage + " +" + (now - timingStart) + "s t=" + now)
 EndFunction
 
 ; Call right before asking SkyrimNet for the line.
@@ -380,14 +431,18 @@ EndFunction
 
 Function ChooseReply()
 	conversationState = StateChoosing
+	; Cleared before the menu opens: the picked line can start playing while it is still open.
+	playerStarted = False
 	; The vanilla dialogue menu first; when it does not open, a message box (every reply in full),
 	; then the list menu, which cuts long lines.
 	Int picked = NoDialogueMenu
 	If ConfigString("menu_style", "dialogue") == "dialogue"
 		picked = PickWithDialogueMenu()
 	EndIf
-	; A topic picked in the dialogue menu is already said aloud by SkyrimNet's player voice (through
-	; Dragonborn Voice Over); a pick in the other menus is voiced here.
+	; A topic picked in the dialogue menu is said aloud by SkyrimNet's player voice (through Dragonborn
+	; Voice Over up to beta 28, by SkyrimNet itself since beta 29). A pick in the other menus is not
+	; voiced: beta 29 removed TriggerPlayerTTS, the only way to voice a line from a script.
+	Timing("menu closed, picked " + picked)
 	Bool alreadyVoiced = picked != NoDialogueMenu
 	If picked == NoDialogueMenu
 		picked = PickWithMessageBox()
@@ -491,6 +546,7 @@ Int Function PickWithDialogueMenu()
 	speaker.AddToFaction(speakerFaction)
 	chosenReply = NoReply
 	Bool opened = OpenDialogueWith(player)
+	Timing("dialogue menu opened=" + opened)
 	; The menu fills its list a moment after it opens, and fills it again after a pick.
 	Int marked = 0
 	Int checks = 0
@@ -521,7 +577,7 @@ EndFunction
 ; the activation is tried up to three times.
 Bool Function OpenDialogueWith(Actor player)
 	Float waited = 0.0
-	While waited < 5.0 && !SkyrimNetApi.IsPlayerTTSFinished()
+	While waited < 5.0 && playerPlaying
 		Utility.Wait(0.25)
 		waited += 0.25
 	EndWhile
@@ -627,23 +683,17 @@ Int Function PickWithList()
 	Return menu.GetResultInt()
 EndFunction
 
-; The player says the chosen reply aloud, word for word, with SkyrimNet's player voice; the NPC
-; answers once it has been said.
+; The NPC answers the chosen reply once the player's voice (for a dialogue menu pick) has said it.
 Function PlayerAnswers(String reply, Bool alreadyVoiced, String intent)
 	Actor player = Game.GetPlayer()
 	; SkyrimNet ends its own dialogue when the menu closes and drops TalkToPlayer with it, so the NPC
 	; walked off while answering. Put it back and keep it until the answer has been said.
 	holdSpeaker = True
 	HoldSpeakerInPlace()
-	If !alreadyVoiced
-		SkyrimNetApi.TriggerPlayerTTS(reply)
+	If alreadyVoiced
+		WaitForPlayerLine(3.0, 30.0)
 	EndIf
-	Float waited = 0.0
-	Utility.Wait(0.5)
-	While waited < 30.0 && !SkyrimNetApi.IsPlayerTTSFinished()
-		Utility.Wait(0.25)
-		waited += 0.25
-	EndWhile
+	Timing("player line done")
 	String npcName = speaker.GetDisplayName()
 	String playerName = player.GetDisplayName()
 	ClearOtherSpeech()
@@ -663,30 +713,42 @@ Function PlayerAnswers(String reply, Bool alreadyVoiced, String intent)
 		settled = answerNote + " "
 	EndIf
 	SkyrimNetApi.DirectNarration(playerName + said + npcName + ": \"" + reply + "\"" + meaning + ". " + settled \
-		+ npcName + " replies to what " + playerName + " just said, in " + npcName + "'s own words, and brings this short conversation to a natural close.", \
+		+ npcName + " replies to what " + playerName + " just said, in " + npcName + "'s own words and in one or two short sentences, and brings this short conversation to a natural close.", \
 		speaker, player)
+	Timing("NPC asked to answer")
 	WaitForSpeech(ConfigFloat("speech_timeout", 40.0))
+	Timing("NPC finished the answer")
 	holdSpeaker = False
 EndFunction
 
-; The player says the chosen reply aloud and nothing more: the caller has the NPC react itself.
+; The chosen reply and nothing more: the caller has the NPC react itself, once the player's voice
+; (for a dialogue menu pick) has said it.
 Function PlayerSays(String reply, Bool alreadyVoiced)
-	If !alreadyVoiced
-		SkyrimNetApi.TriggerPlayerTTS(reply)
+	If alreadyVoiced
+		WaitForPlayerLine(3.0, 30.0)
 	EndIf
-	Float waited = 0.0
-	Utility.Wait(0.5)
-	While waited < 30.0 && !SkyrimNetApi.IsPlayerTTSFinished()
-		Utility.Wait(0.25)
-		waited += 0.25
-	EndWhile
+	Timing("player line done")
 EndFunction
 
 ; Puts the approach package back on the speaker when SkyrimNet has taken it off.
 Function HoldSpeakerInPlace()
-	If speaker && SkyrimNetApi.HasPackage(speaker, ApproachPackage) == 0
+	If speaker && !speakerReleased && SkyrimNetApi.HasPackage(speaker, ApproachPackage) == 0
 		SkyrimNetApi.RegisterPackageEx(speaker, ApproachPackage, -1, False, PackageOwner, "Brothel Choices", False)
 	EndIf
+EndFunction
+
+; The caller has moved on while the speaker is still answering (the brothel starts the scene as
+; soon as a position is picked): the speaker is no longer held on the approach package, which would
+; fight the scene. The answer itself still plays.
+Bool speakerReleased
+
+Function LetSpeakerGo()
+	speakerReleased = True
+	holdSpeaker = False
+	If speaker
+		SkyrimNetApi.UnregisterPackageEx(speaker, ApproachPackage, PackageOwner)
+	EndIf
+	Timing("caller moved on")
 EndFunction
 
 ; ---------------------------------------------------------------------------------------------

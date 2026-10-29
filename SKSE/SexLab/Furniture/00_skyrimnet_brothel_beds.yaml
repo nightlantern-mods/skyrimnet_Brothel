@@ -1,0 +1,32 @@
+# SexLab P+ furniture entries for Skyrim's common beds, which SexLab P+ does not list itself: without
+# them SexLab treats these beds as unknown furniture, offers every scene on them, and the brothel
+# leaves them unused. Covers CommonBed01 / 01L / 01R and CommonBedDouble01 / 01L / 01R, which share
+# these two meshes. The height (third offset value) is SexLab 1.6x's bed height; 33.6, taken from
+# SexLab's orc and dwemer beds, left the pair sunk into the mattress. Raise or lower it if the pair
+# floats above or sinks into the mattress.
+Furniture\common\commonbed01.nif:
+  Type: BedSingle
+  Offset:
+    - [0.0, 0.0, 37.0, 0.0]
+
+Furniture\common\commonbeddouble01.nif:
+  Type: BedDouble
+  Offset:
+    - [0.0, 0.0, 37.0, 0.0]
+
+# SexLab P+ 2.18.1 lists the noble single bed (Delphine's at the Sleeping Giant, NobleBedSingle01)
+# at height -13, which sinks the pair deep into the mattress; its noble double beds sit at 39 and 41.
+# This entry repeats SexLab's own with the bed height raised (39, the doubles' height, still left the
+# pair a little sunk; 43 tried next). SexLab reads these
+# files in name order and keeps the first entry for a mesh (a later one is ignored, as this one was
+# as skyrimnet_brothel_commonbeds.yaml), hence the leading "00_": it is read before noble.yaml. The
+# BenchMisc offsets are SexLab's, unchanged.
+Furniture\noble\noblebedsingle01.nif:
+  - Type: BedSingle
+    Offset:
+      - [0.0, 6.1, 43.0, 0.0]
+  - Type: BenchMisc
+    Offset:
+      - [0.0, 86, 0.0, 0.0]
+      - [-31.5, 6.1, 0.0, 270]
+      - [31.5, 6.1, 0.0, 90]

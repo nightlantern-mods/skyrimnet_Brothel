@@ -91,6 +91,10 @@ Int nextSerial
 Bool talking
 Float talkingSince
 Float Property TalkTurnTimeoutSeconds = 120.0 AutoReadOnly
+; The player's turn is not taken over before this: the player may take a while in the menus.
+Float Property PlayerTalkTimeoutSeconds = 300.0 AutoReadOnly
+; How long a wish for the turn holds the others back, should the player's request never get to it.
+Float Property PlayerWaitTimeoutSeconds = 60.0 AutoReadOnly
 
 ; How long the worker has to accept or refuse in conversation before the scene starts anyway.
 Float Property DealTimeoutSeconds = 60.0 AutoReadOnly
@@ -441,6 +445,8 @@ Event OnUpdate()
 		Actor approached = pendingRecommend
 		pendingRecommend = None
 		PlayerSolicits(approached)
+		; Set by the topic; PlayerSolicits may have returned before asking for the turn.
+		playerWantsTalk = False
 	EndIf
 	If ownerDue
 		OwnerRound()
@@ -1941,6 +1947,9 @@ EndFunction
 ; The NPC owner says something to listener, in the talk turn every pair waits for (see AcquireTalk).
 Function OwnerSpeaks(String narration, Actor listener)
 	Float startedAt = Utility.GetCurrentRealTime()
+	If playerHoldsTalk || (playerWantsTalk && startedAt - playerWantsSince <= PlayerWaitTimeoutSeconds)
+		Return
+	EndIf
 	talking = True
 	talkingSince = startedAt
 	SkyrimNetApi.DirectNarration(narration, brothelOwner, listener)
@@ -2801,7 +2810,11 @@ Function ServePlayerWith(SexLabFramework sexLab, Actor customer)
 	AnnounceApproach(customer, player)
 
 	PlayerTrace("customer " + customer.GetDisplayName() + " in slot " + slot)
+	PlayerTrace("timing: walk start t=" + Utility.GetCurrentRealTime())
+	; No worker starts a new conversation while the customer walks over (AcquireTalk).
+	PlayerWantsTalk()
 	ApproachWorker(customer, player)
+	PlayerTrace("timing: arrived t=" + Utility.GetCurrentRealTime())
 	If talking
 		Debug.Notification("$SNB_WaitingTurn")
 	EndIf
@@ -2809,6 +2822,7 @@ Function ServePlayerWith(SexLabFramework sexLab, Actor customer)
 		PlayerTrace("stopped: the deal was cleared while waiting to talk")
 		Return
 	EndIf
+	PlayerTrace("timing: talk turn t=" + Utility.GetCurrentRealTime())
 	If ChoicesReady() && ServePlayerWithChoices(sexLab, slot, serial)
 		Return
 	EndIf
@@ -2869,8 +2883,9 @@ Int Property ChoiceUnavailable = -3 AutoReadOnly
 String choiceTag
 Int choiceIndex
 Bool choiceEnded
-; Whether the customer answered the player's last pick himself (see AskPlayer).
+; Whether the customer answered the player's last pick himself (see AskPlayer), and the line picked.
 Bool lastAskAnswered = True
+String choiceText
 
 Int Property ChoicesQuestID = 0x00080D AutoReadOnly
 
@@ -2885,6 +2900,7 @@ EndFunction
 Event OnChoicesReplyChosen(Form akNpc, String asTag, Int aiIndex, String asText)
 	If asTag == choiceTag && asTag != ""
 		choiceIndex = aiIndex
+		choiceText = asText
 	EndIf
 EndEvent
 
@@ -2900,8 +2916,10 @@ EndEvent
 ; customerAnswers False: the customer does not answer the pick; the caller has him react, and
 ; lastAskAnswered says whether that applied. playerSpeaksFirst: the
 ; player opens the conversation with the picked line (the owner recommending a worker). slot -1:
-; no deal yet.
-Int Function AskPlayer(Actor customer, String theme, String situation, String[] intents, String tag, Int slot, Bool customerAnswers = True, Bool playerSpeaksFirst = False, String answerNote = "")
+; no deal yet. returnOnPick: returns as soon as the player has picked, while the customer may
+; still be answering; he is no longer held in place, and the caller keeps the talking turn until
+; he is done (ReleaseTalkAfterChoices).
+Int Function AskPlayer(Actor customer, String theme, String situation, String[] intents, String tag, Int slot, Bool customerAnswers = True, Bool playerSpeaksFirst = False, String answerNote = "", Bool returnOnPick = False)
 	skyrimnet_BrothelChoices engine = Choices()
 	If !engine || !intents
 		Return ChoiceUnavailable
@@ -2915,19 +2933,35 @@ Int Function AskPlayer(Actor customer, String theme, String situation, String[] 
 	choiceTag = tag
 	choiceIndex = ChoiceNone
 	choiceEnded = False
-	lastAskAnswered = customerAnswers || playerSpeaksFirst
+	lastAskAnswered = customerAnswers
+	choiceText = ""
 	Bool started = engine.StartFromApi(customer, playerSpeaksFirst, theme, situation, intents, tag, lastAskAnswered, answerNote)
 	If !started
 		choiceTag = ""
 		Return ChoiceUnavailable
 	EndIf
 	waited = 0.0
-	While !choiceEnded && waited < 180.0
+	While !choiceEnded && waited < 180.0 && !(returnOnPick && choiceIndex != ChoiceNone)
 		Utility.Wait(0.5)
 		waited += 0.5
 	EndWhile
+	If !choiceEnded && choiceIndex != ChoiceNone
+		engine.LetSpeakerGo()
+	EndIf
 	choiceTag = ""
 	Return choiceIndex
+EndFunction
+
+; With the scene already starting, the customer may still be answering the pick (returnOnPick):
+; the talking turn is kept until he is done, so no other pair talks over him.
+Function ReleaseTalkAfterChoices()
+	skyrimnet_BrothelChoices engine = Choices()
+	Float waited = 0.0
+	While engine && !engine.IsIdle() && waited < 45.0
+		Utility.Wait(0.5)
+		waited += 0.5
+	EndWhile
+	ReleaseTalk()
 EndFunction
 
 ; ServePlayer's answer and scene through the choices menu. False when it could not take the offer
@@ -2985,9 +3019,9 @@ Bool Function ServePlayerWithChoices(SexLabFramework sexLab, Int slot, Int seria
 		CustomerReacts(customer, player.GetDisplayName() + " has just " + mood + " accepted " + customer.GetDisplayName() \
 			+ "'s offer of " + payment + " gold for the night. " + customer.GetDisplayName() + " reacts to the answer in a few words.")
 	EndIf
-	ReleaseTalk()
 	If positionTag == "-"
 		; Walked away when asked: the deal is off after all.
+		ReleaseTalk()
 		SkyrimNetApi.RegisterPersistentEvent(player.GetDisplayName() + " changed their mind and left " + customer.GetDisplayName() + ".", player, customer)
 		Debug.Notification("$SNB_PlayerRefused")
 		ReleaseDeal(slot)
@@ -2995,10 +3029,12 @@ Bool Function ServePlayerWithChoices(SexLabFramework sexLab, Int slot, Int seria
 	EndIf
 	Utility.Wait(1.0)
 	If DealAlive(slot, serial)
+		PlayerTrace("timing: scene start t=" + Utility.GetCurrentRealTime())
 		StartBrothelScene(sexLab, slot, positionTag)
 	Else
 		PlayerTrace("stopped: the deal was cleared after accepting")
 	EndIf
+	ReleaseTalkAfterChoices()
 	Return True
 EndFunction
 
@@ -3009,7 +3045,9 @@ EndFunction
 ; with his reaction to it. positionAsked says whether the question was put at all.
 Bool positionAsked
 
-String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant, Bool reactFirst = False)
+; reaction: what to say instead when the customer has not yet answered the player's own offer: he
+; says yes and asks in one line (reactFirst is then ignored).
+String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant, Bool reactFirst = False, String reaction = "")
 	Actor player = Game.GetPlayer()
 	Actor customer = dealCustomers[slot]
 	Actor[] positions = new Actor[2]
@@ -3051,14 +3089,18 @@ String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant, Bo
 	String situation = player.GetDisplayName() + " has just " + mood + " agreed to spend the night with " + customer.GetDisplayName() \
 		+ " for gold. Before they go to bed, " + customer.GetDisplayName() + " asks " + player.GetDisplayName() \
 		+ " what they would like to do, and keeps it short."
-	If reactFirst
+	If reaction != ""
+		theme = "the customer says yes to " + player.GetDisplayName() + "'s offer and asks which position they would like tonight"
+		situation = reaction
+	ElseIf reactFirst
 		theme = "the customer reacts to " + player.GetDisplayName() + "'s answer and asks which position they would like tonight"
 		situation = player.GetDisplayName() + " has just " + mood + " accepted " + customer.GetDisplayName() \
 			+ "'s offer to spend the night together for gold, and " + customer.GetDisplayName() + " has not reacted yet. In one short line, " \
 			+ customer.GetDisplayName() + " reacts to the answer and, in the same breath, asks " + player.GetDisplayName() \
 			+ " what they would like to do tonight."
 	EndIf
-	Int picked = AskPlayer(customer, theme, situation, intents, ChoicesTagPosition, slot)
+	; The scene starts as soon as a position is picked; the customer answers it while it begins.
+	Int picked = AskPlayer(customer, theme, situation, intents, ChoicesTagPosition, slot, True, False, "", True)
 	positionAsked = picked != ChoiceUnavailable
 	If picked == ChoiceLeft
 		Return "-"
@@ -3497,24 +3539,61 @@ EndFunction
 ; the other's silence for their own and start their scene before their own exchange. Scenes still
 ; run side by side. Waits for the turn; false if the deal was cleared meanwhile. A turn held for
 ; over TalkTurnTimeoutSeconds is taken over.
+; The player goes first: while the player waits for the turn, or holds it, no worker, owner or chat
+; starts talking (the player's deal waited out every worker's offer, half a minute in a busy brothel).
 Bool Function AcquireTalk(Int slot, Int serial)
+	Bool forPlayer = dealWorkers[slot] == Game.GetPlayer()
+	If forPlayer
+		PlayerWantsTalk()
+	EndIf
 	While DealAlive(slot, serial)
 		; The time is read first: a call to another script lets other threads in, and one coming in
 		; between "talking = True" and its time took the turn as held too long and talked over it.
 		Float now = Utility.GetCurrentRealTime()
-		If !talking || now - talkingSince > TalkTurnTimeoutSeconds
+		If !TurnTaken(now, forPlayer)
 			talking = True
 			talkingSince = now
+			playerHoldsTalk = forPlayer
+			If forPlayer
+				playerWantsTalk = False
+			EndIf
 			Return True
 		EndIf
 		KeepClose(slot)
 		Utility.Wait(0.5)
 	EndWhile
+	If forPlayer
+		playerWantsTalk = False
+	EndIf
 	Return False
+EndFunction
+
+Bool playerWantsTalk
+Float playerWantsSince
+Bool playerHoldsTalk
+
+Function PlayerWantsTalk()
+	playerWantsSince = Utility.GetCurrentRealTime()
+	playerWantsTalk = True
+EndFunction
+
+; Whether someone else has the turn at now, or (for anyone but the player) the player is waiting for it.
+Bool Function TurnTaken(Float now, Bool forPlayer)
+	If !forPlayer && playerWantsTalk && now - playerWantsSince <= PlayerWaitTimeoutSeconds
+		Return True
+	EndIf
+	If !talking
+		Return False
+	EndIf
+	If playerHoldsTalk
+		Return now - talkingSince <= PlayerTalkTimeoutSeconds
+	EndIf
+	Return now - talkingSince <= TalkTurnTimeoutSeconds
 EndFunction
 
 Function ReleaseTalk()
 	talking = False
+	playerHoldsTalk = False
 EndFunction
 
 ; Returns once a line has played since the offer (startedAt, real time) and nothing more is queued
@@ -4101,6 +4180,7 @@ EndFunction
 
 ; The player's topic, as a worker: the player offers this person their company.
 Function SolicitTopicChosen(Actor customer)
+	PlayerWantsTalk()
 	pendingRecommend = customer
 	pendingAction = "solicit"
 	RegisterForSingleUpdate(0.5)
@@ -4161,7 +4241,7 @@ Function PlayerSolicits(Actor customer)
 		picked = AskPlayer(customer, p + " offers " + c + " a night together for gold", \
 			p + " works at this brothel, selling their company for gold. " + c + " is here as a customer. " + p + " walks up to " + c \
 			+ " to offer a night together for " + payment + " gold. Nothing has been paid yet: " + c + " pays the moment " + HeOf(customer) + " agrees.", \
-			intents, ChoicesTagSolicit, slot, True, True, SolicitAnswer(customer, willAccept))
+			intents, ChoicesTagSolicit, slot, !willAccept, True, SolicitAnswer(customer, willAccept))
 	EndIf
 	If !DealAlive(slot, serial)
 		ReleaseTalk()
@@ -4172,15 +4252,18 @@ Function PlayerSolicits(Actor customer)
 		ReleaseDeal(slot)
 		Return
 	EndIf
-	; Player Choices has the customer answer the player's line, told the rolled answer with it
-	; (AskPlayer's answerNote): left to himself he turned nearly every offer down, and a second
-	; answer of the brothel's own came after SkyrimNet's, contradicting it. His answer may still be
-	; on its way.
-	Float waited = 0.0
-	While DealAlive(slot, serial) && waited < 10.0 && !AnswerSpoken(slot)
-		Utility.Wait(0.5)
-		waited += 0.5
-	EndWhile
+	; A customer turning the offer down answers the player's line in Player Choices, told the rolled
+	; answer with it (AskPlayer's answerNote): left to himself he turned nearly every offer down. One
+	; saying yes does not answer there: his yes opens the position question below, one line instead
+	; of two (his separate answer took some twenty seconds). The choices conversation has ended once
+	; AskPlayer returns, so nothing is waited for here.
+	If !ChoicesReady()
+		Float waited = 0.0
+		While DealAlive(slot, serial) && waited < 10.0 && !AnswerSpoken(slot)
+			Utility.Wait(0.5)
+			waited += 0.5
+		EndWhile
+	EndIf
 	If !DealAlive(slot, serial)
 		ReleaseTalk()
 		Return
@@ -4196,16 +4279,33 @@ Function PlayerSolicits(Actor customer)
 	EndIf
 	dealStates[slot] = DealAccepted
 	PayForDeal(slot)
-	String positionTag = AskPosition(sexLab, slot, False, False)
-	ReleaseTalk()
+	String reaction = ""
+	If !lastAskAnswered
+		String said = ""
+		If choiceText != ""
+			said = ", saying: \"" + choiceText + "\""
+		EndIf
+		reaction = p + " has just offered " + c + " a night together for " + payment + " gold" + said + ". " + c \
+			+ " came to the brothel tonight for exactly this and accepts, and has not answered yet. In one short line, " + c \
+			+ " says yes and, in the same breath, asks " + p + " what they would like to do tonight."
+	EndIf
+	String positionTag = AskPosition(sexLab, slot, False, False, reaction)
+	If reaction != "" && !positionAsked
+		; No position question after all: the customer still says yes.
+		CustomerReacts(customer, p + " has just offered " + c + " a night together for " + payment + " gold" \
+			+ ". " + c + " accepts the offer in a few words.")
+	EndIf
 	If positionTag == "-"
+		ReleaseTalk()
 		ReleaseDeal(slot)
 		Return
 	EndIf
 	Utility.Wait(1.0)
 	If DealAlive(slot, serial)
+		PlayerTrace("timing: scene start t=" + Utility.GetCurrentRealTime())
 		StartBrothelScene(sexLab, slot, positionTag)
 	EndIf
+	ReleaseTalkAfterChoices()
 EndFunction
 
 ; The scene ended: the pair's deal is done (it was paid when accepted).
@@ -4308,7 +4408,7 @@ EndFunction
 
 Function WorkerChatRound()
 	If !brothelCell || Game.GetPlayer().GetParentCell() != brothelCell || Utility.IsInMenuMode() \
-			|| (talking && Utility.GetCurrentRealTime() - talkingSince <= TalkTurnTimeoutSeconds)
+			|| TurnTaken(Utility.GetCurrentRealTime(), False)
 		Return
 	EndIf
 	Int topicCount = JsonUtil.StringListCount(GossipFile, "topics")
@@ -4362,7 +4462,7 @@ Function WorkerChatRound()
 	; The turn is checked again here, with nothing in between that lets another thread in: one may
 	; have taken it while the pair was being picked.
 	Float startedAt = Utility.GetCurrentRealTime()
-	If talking && startedAt - talkingSince <= TalkTurnTimeoutSeconds
+	If TurnTaken(startedAt, False)
 		Return
 	EndIf
 	talking = True

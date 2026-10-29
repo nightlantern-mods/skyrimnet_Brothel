@@ -1,4 +1,4 @@
-# SkyrimNet Brothel 0.2.0
+# SkyrimNet Brothel 0.2.1
 
 Run your own brothel. Make any interior your brothel, register women (followers or anyone else) as
 workers, and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the
@@ -9,7 +9,9 @@ can go after customers themselves, and the brothel and every worker gain levels.
 New in 0.2.0: up to three brothels, women customers, hired workers, registering all your female
 followers at once, up to 12 pairs at once, workers chatting among themselves, a *Manage Brothel*
 power for the main settings, a set chance that a customer accepts an invitation, more varied
-offers, and better bed handling (see [What is new in 0.2.0](#what-is-new-in-020)).
+offers, and better bed handling (see [What is new in 0.2.0](#what-is-new-in-020)). 0.2.1 makes taking customers
+yourself much quicker, works with the coming SkyrimNet beta 29, and fixes Delphine's bed (see
+[What is new in 0.2.1](#what-is-new-in-021)).
 
 > **SexLab 1.6x support is untested.** Since 0.1.6 the mod also runs on classic SexLab 1.6x
 > (written against 1.66b), but that support has **not been tested in game on 1.6x**: it was only
@@ -351,7 +353,7 @@ How 1.6x differs from P+:
   those that fit the pair: as many male and female positions as the pair has men and women, not
   aggressive, no special furniture, and, on a bed, none tagged `NoBed` or `Standing` (off a bed,
   none tagged `BedOnly`). With none found, SexLab picks its own.
-- Only the beds in SexLab 1.6x's own bed list are used. `SKSE/SexLab/Furniture/skyrimnet_brothel_commonbeds.yaml`
+- Only the beds in SexLab 1.6x's own bed list are used. `SKSE/SexLab/Furniture/00_skyrimnet_brothel_beds.yaml`
   is a P+ file and 1.6x ignores it, so beds 1.6x does not list (Skyrim's common beds, for one) are
   passed over and the scene plays where the pair stands.
 - With *Beds* set to *Follow SexLab*, or when no free bed is found, SexLab 1.6x's own bed settings
@@ -365,6 +367,26 @@ How 1.6x differs from P+:
 
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
+
+## What is new in 0.2.1
+
+- **Taking customers yourself is much quicker.** In a busy brothel your conversation waited for
+  every worker's offer to end first (half a minute and more); now you go first, and no worker,
+  owner or chat starts talking while you are in a conversation. A needless ten-second wait after
+  your invitation is gone. When a customer says yes to your invitation, his yes and his question
+  about the position are now one line instead of two. The scene starts as soon as you pick a
+  position, while he answers. Customers answer you in a sentence or two.
+- **SkyrimNet beta 29:** SkyrimNet's next version removes `TriggerPlayerTTS` and
+  `IsPlayerTTSFinished`, which the built-in Player Choices used; without them every reply would
+  have waited half a minute. The mod no longer uses them, so it works with beta 28 and beta 29
+  alike. A line picked in the dialogue menu is still spoken in your voice by SkyrimNet; a line
+  picked in the message box or list menu (used only when the dialogue menu does not open) is no
+  longer voiced.
+- **Delphine's bed** at the Sleeping Giant (and every noble single bed): SexLab P+ places pairs
+  far too low on it, so they sank into the mattress. The mod's SexLab furniture file now corrects
+  it, and is renamed `00_skyrimnet_brothel_beds.yaml` so SexLab reads it first.
+- With Papyrus logging on, `[SNB Timing]` lines in the log show how long each step of your
+  conversations takes.
 
 ## What is new in 0.2.0
 
@@ -413,6 +435,9 @@ go home, save, then disable the mod.
 - `SKSE/Plugins/skyrimnet_Brothel/positions.json`: the positions offered when you take a customer
   yourself: SexLab scene tags (`tags`) and what each choice means (`labels`, English, read by the
   LLM). Edit, add or remove pairs freely; keep both lists in the same order.
-- `SKSE/SexLab/Furniture/skyrimnet_brothel_commonbeds.yaml`: SexLab P+ furniture entries for
-  Skyrim's common single and double beds, which SexLab P+ does not list itself, so scenes use them.
+- `SKSE/SexLab/Furniture/00_skyrimnet_brothel_beds.yaml`: SexLab P+ furniture entries for
+  Skyrim's common single and double beds, which SexLab P+ does not list itself, so scenes use them,
+  and for the noble single bed, which SexLab P+ lists too low (pairs sank into it). SexLab P+ keeps
+  the first entry it reads for a bed, reading these files by name, hence the leading `00_`. Called
+  `skyrimnet_brothel_commonbeds.yaml` before 0.2.1: delete that file if your mod manager keeps it.
   SexLab 1.6x does not read it.
