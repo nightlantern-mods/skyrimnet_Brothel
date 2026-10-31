@@ -1,7 +1,7 @@
-# SkyrimNet Brothel 0.2.1
+# SkyrimNet Brothel 0.3.0
 
-Run your own brothel. Make any interior your brothel, register women (followers or anyone else) as
-workers, and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the
+Run your own brothel. Make any interior your brothel, register workers, women or men (followers or
+anyone else), and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the
 worker's answer, SexLab plays the scene, and the customer pays up front. Since 0.1.7 the town's own
 people can come as customers, the brothel can have an owner who takes a share and runs it, workers
 can go after customers themselves, and the brothel and every worker gain levels.
@@ -10,8 +10,12 @@ New in 0.2.0: up to three brothels, women customers, hired workers, registering 
 followers at once, up to 12 pairs at once, workers chatting among themselves, a *Manage Brothel*
 power for the main settings, a set chance that a customer accepts an invitation, more varied
 offers, and better bed handling (see [What is new in 0.2.0](#what-is-new-in-020)). 0.2.1 makes taking customers
-yourself much quicker, works with the coming SkyrimNet beta 29, and fixes Delphine's bed (see
+yourself much quicker, works with SkyrimNet beta 29, and fixes Delphine's bed (see
 [What is new in 0.2.1](#what-is-new-in-021)).
+
+New in 0.3.0: men workers, customers and workers who know each other (friends, lovers, regulars)
+and family who never do business together, buying a worker's company yourself, a reordered MCM, and
+a brothel with no customers of its own (see [What is new in 0.3.0](#what-is-new-in-030)).
 
 > **SexLab 1.6x support is untested.** Since 0.1.6 the mod also runs on classic SexLab 1.6x
 > (written against 1.66b), but that support has **not been tested in game on 1.6x**: it was only
@@ -45,6 +49,10 @@ SkyrimNet Player Choices (and its Starters add-on) installed for other mods; the
 Install with your mod manager and enable `skyrimnet_Brothel.esp`. It is ESL-flagged and needs no
 load-order slot. It can be added to an existing save.
 
+**Upgrading from 0.2.x:** install over the old version (plugin included) and load your save. The
+MCM pages are reordered, but your values are kept. Workers you registered stay registered, and
+*Hired workers' sex* starts at *Women only*, so nothing changes until you set it.
+
 **Upgrading from 0.1.x:** install over the old version and load your save; nothing else is
 needed. Your brothel becomes the first of up to three, and you get the *Manage Brothel* power. If
 the MCM does not show the new settings, check them once (MCM Helper keeps the values you already
@@ -64,14 +72,15 @@ throughout.
    worker* and, if you want to work yourself, *Take a customer yourself*. They are unset at first.
 2. **Make a brothel.** Walk into any interior, choose *Add this interior as a brothel* in the MCM
    (or in the *Manage Brothel* power) and close the menu. Customers move in (three by default, set
-   with *Customers*) and wander about. Their looks are picked at random from vanilla men (and, with
-   *Customers' sex*, women) of several races. You can have up to three brothels; see *Several
-   brothels* below.
-3. **Register workers.** Aim at a woman, a follower or any other adult NPC, and press *Register / unregister worker*. Press
-   it on her again to unregister her. *Register female followers* registers every woman following
-   you at once (*Unregister followers* undoes it), and *Hired workers* has the brothel hire women of
-   its own. The *Workers* page of the MCM lists everyone registered; a `*` after a name means she is
-   in the brothel now. You can unregister from there too.
+   with *Customers*, 0 to 10) and wander about. Their looks are picked at random from vanilla men
+   (and, with *Customers' sex*, women) of several races. You can have up to three brothels; see
+   *Several brothels* below.
+3. **Register workers.** Aim at any adult NPC, a woman or a man, a follower or not, and press
+   *Register / unregister worker*. Press it on them again to unregister them. *Register followers*
+   registers every follower near you at once, of the sexes *Hired workers' sex* picks (*Unregister
+   followers* undoes it), and *Hired workers* has the brothel hire workers of its own. The
+   *Workers* page of the MCM lists everyone registered; a `*` after a name means they are in the
+   brothel now. You can unregister from there too.
 4. **Send a customer.** While you are in the brothel, press *Send a customer*, or turn on *Send
    customers automatically*. The free customer nearest to her (one of the brothel's own or, with *Anyone can be a
    customer* on, any other adult NPC there) walks up to a free worker who is inside the brothel
@@ -89,22 +98,27 @@ throughout.
    SexLab has scenes for) or leave it to him, and the scene starts with that position. Customers
    come to you without the hotkey only while *Send customers to you too* is on. You can also walk
    up to a customer and pick *(Offer your company)* in conversation: you choose how to put it, and
-   he says yes or no.
-6. **Let the town come to you (optional).** Turn on *Townsfolk visit* in the MCM. During the
+   he says yes or no. All this needs *You work as one of the workers* on.
+6. **Buy a worker (optional).** With *You work as one of the workers* off, talk to a worker in the
+   brothel and pick *(Buy their company)*. See *Buying a worker* below.
+7. **Let the town come to you (optional).** Turn on *Townsfolk visit* in the MCM. During the
    opening hours (18:00 to 02:00 by default) people of the brothel's town walk over on their own,
    wait in the brothel and are customers like the brothel's own. See *Townsfolk customers* below.
-7. **Get paid.** The customer pays the moment the offer is accepted (50 gold by default), before
+8. **Get paid.** The customer pays the moment the offer is accepted (50 gold by default), before
    the scene, and SkyrimNet remembers it. With an owner, the house's share goes to the owner. If
    the deal falls through before the scene, the gold is given back.
-8. **Pick an owner (optional).** On the *Owner* page choose nobody, yourself, or an adult who is in
+9. **Pick an owner (optional).** On the *Owner* page choose nobody, yourself, or an adult who is in
    the brothel. See *The owner* below.
-9. **Manage it on the go.** The *Manage Brothel* lesser power (under *Powers* in the magic menu)
+10. **Manage it on the go.** The *Manage Brothel* lesser power (under *Powers* in the magic menu)
    opens a list with the main settings, for when the MCM is not at hand or does not show (SkyUI
    lists at most 128 mod menus). See *The Manage Brothel power* below.
 
 ## MCM settings
 
-The menu has six pages.
+The menu has six pages. Since 0.3.0 each page is grouped under headings, with settings that go
+together next to each other. Buttons that act on the world (adding or closing a brothel,
+registering followers) do their work once the menu closes; several pressed in one visit all run,
+in the order pressed.
 
 **Brothel**
 
@@ -114,12 +128,17 @@ The menu has six pages.
 | Brothels | 0 / 3 | How many brothels you have. |
 | Add this interior as a brothel | | Makes the interior you stand in one of your brothels (up to 3); customers move in. If it already is one, it becomes the current one. |
 | Brothel list / Close the selected brothel | | Closes the brothel picked in the list: its customers and hired workers leave, and its owner, level and townsfolk are forgotten. |
-| Customers | 3 | 1 to 10. Changing it adds or sends away customers once the menu closes; the one being served stays. |
-| Customers' sex | Men | Men, women, or half and half (with an odd number, one more man). Changing it swaps customers once the menu closes. |
-| Anyone can be a customer | On | Other adult NPCs in the brothel can be customers too. Registered workers and hostile NPCs never are. |
-| Allow same-sex | Off | Off: customers are always of the other sex from the worker (or you). On: same-sex pairs too. |
+| *Customers* | | |
+| Customers | 3 | 0 to 10 of the brothel's own customers. At 0 none stay, and customers come only from the townsfolk and, with *Anyone can be a customer* on, other NPCs in the brothel. Changing it adds or sends away customers once the menu closes; one being served leaves once done. |
 | Pairs at once | 5 | 1 to 12 workers with customers at the same time. Your own customer does not count. Each pair needs a free customer, and SexLab plays at most 15 scenes at once. |
-| Gold per customer | 50 | 0 to 1000, paid up front when the offer is accepted. |
+| Customers' sex | Men | Men, women, or half and half (with an odd number, one more man). Changing it swaps customers once the menu closes. |
+| Allow same-sex | Off | Off: customers are always of the other sex from the worker (or you). On: same-sex pairs too. |
+| Anyone can be a customer | On | Other adult NPCs in the brothel can be customers too. Registered workers, a worker's family and hostile NPCs never are. |
+| *Scenes* | | |
+| Beds | Always use | *Always use*: the scene takes place on a free bed in the brothel (a double bed first), or where the pair stands if none is free. *Follow SexLab*: SexLab's own NPC bed setting decides. |
+| *Payment* | | |
+| Gold per customer | 50 | 0 to 1000, paid up front when the offer is accepted. Also the price when you buy a worker. |
+| *Brothel level* | | |
 | Brothel level / Gold to the next level | | See *Levels* below. |
 | Gold per brothel level | 1000 | 100 to 10000. |
 
@@ -128,32 +147,41 @@ The menu has six pages.
 | Setting | Default | What it does |
 |---|---|---|
 | Registered workers / Worker list | | Who is registered; `*` = in the brothel now. |
-| Unregister the selected worker | | Unregisters the worker picked in the list. |
-| Register female followers | | Registers every woman who follows you and is near you now. Followers waiting elsewhere are not found. |
-| Unregister followers | | Unregisters every registered worker who is one of your followers, wherever she is. |
 | Selected worker's level / gold to the next level | | The level of the worker picked in the list. |
-| Hired workers | 0 | 0 to 10 women the brothel hires. They appear in the current brothel already registered and stay there; see *Hired workers* below. |
+| Unregister the selected worker | | Unregisters the worker picked in the list. |
+| *Followers* | | |
+| Register followers | | Registers every follower near you now, of the sexes *Hired workers' sex* picks. Followers waiting elsewhere are not found. |
+| Unregister followers | | Unregisters every registered worker who is one of your followers, wherever they are. |
+| *Hired workers* | | |
+| Hired workers | 0 | 0 to 10 workers the brothel hires. They appear in the current brothel already registered and stay there; see *Hired workers* below. |
+| Hired workers' sex | Women only | Women only, men only, or both (with an odd number, one more woman). Also decides whom *Register followers* takes. |
 | Hired workers' level | 5 | 1 to 10, the level a newly hired worker starts at. |
-| Always accept | Off | The worker always says yes: after the offer she is told to accept and says so, then the scene starts. |
+| *The worker's answer* | | |
+| Always accept | Off | The worker always says yes: after the offer they are told to accept and say so, then the scene starts. |
 | Allow refusing | On | Lets the AI turn a customer down. Ignored while *Always accept* is on. |
-| Beds | Always use | *Always use*: the scene takes place on a free bed in the brothel (a double bed first), or where the pair stands if none is free. *Follow SexLab*: SexLab's own NPC bed setting decides. |
-| Workers invite customers | Off | At the interval below, a free worker of level 5 or more walks up to a free customer and offers her company. |
+| *Invitations* | | |
+| Workers invite customers | Off | At the interval below, a free worker of level 5 or more walks up to a free customer and offers their company. |
 | Invitation interval (seconds) | 120 | 10 to 1800. |
 | Chance a customer accepts | 80% | 0 to 100%. Whether a customer says yes to a worker's (or your) invitation. He is told the answer before he speaks, so his words match it. |
+| *Small talk* | | |
 | Workers chat | Off | At the interval below, two free workers standing near each other gossip between customers; see *Small talk* below. |
 | Chat interval (seconds) | 300 | 30 to 1800. Each chat is an LLM request. |
+| *Worker levels* | | |
 | Gold per worker level | 300 | 50 to 5000. |
 
 **You**
 
 | Setting | Default | What it does |
 |---|---|---|
-| You work as one of the girls | On | Your hotkey, *(Offer your company)* in conversation, and an NPC owner talking to you about your takings. Off: none of that. |
+| You work as one of the workers | On | Your hotkey, *(Offer your company)* in conversation, and an NPC owner talking to you about your takings. Off: none of that. |
 | Send customers to you too | Off | Automatic customers, *Send a customer* and an NPC owner's recommendations may pick you, like any free worker. |
+| Take a customer yourself | unset | Hotkey. You choose to accept or refuse; never automatic. |
 | Your level / gold to the next level | | Your own level as a worker. |
+| *Buying workers* | | |
+| Buy workers | On | While *You work as one of the workers* is off, *(Buy their company)* is offered when you talk to a worker in the brothel; see *Buying a worker* below. |
+| *Hotkeys* | | |
 | Send a customer | unset | Hotkey. |
 | Register / unregister worker | unset | Hotkey. |
-| Take a customer yourself | unset | Hotkey. You choose to accept or refuse; never automatic. |
 
 **Automatic & town**
 
@@ -161,10 +189,11 @@ The menu has six pages.
 |---|---|---|
 | Send customers automatically | Off | Sends a customer to a free worker at the interval below while you are in the brothel. |
 | Interval (seconds) | 180 | 10 to 1800. Time in menus does not count. |
+| *Townsfolk customers* | | |
 | Townsfolk visit | Off | People of the brothel's town walk over during the opening hours and become customers. |
 | Who visits | Men | Men, women or both. |
-| Opening hour / Closing hour | 18 / 2 | When townsfolk set off. Closing earlier than opening runs past midnight; the same hour is all day. |
 | Visitors at once | 2 | 1 to 5, on their way or waiting. |
+| Opening hour / Closing hour | 18 / 2 | When townsfolk set off. Closing earlier than opening runs past midnight; the same hour is all day. |
 | Hours they wait | 3 | 1 to 12 in-game hours; a visitor not served by then goes home. |
 | Townsfolk known | | How many people of the town the mod has seen. |
 
@@ -199,15 +228,18 @@ decide it.
 
 ## Notes and limits
 
-- Up to three brothels, each with 1 to 10 customers. Only interiors can be a brothel.
+- Up to three brothels, each with 0 to 10 customers of its own. Only interiors can be a brothel.
 - Several pairs can run at once (*Pairs at once*, up to 12). Their offers are spoken one after
   another through SkyrimNet, so later pairs may start their scenes a little later.
 - Beds: one pair picks and claims a bed at a time, so two pairs never get the same bed. A double
   bed is picked before a single one (SexLab's bed scenes are made for double beds and can spill
   over a single one), a single bed before a bedroll, and a bed someone is standing on is passed
   over. After the scene the pair is moved off the bed, to where the customer stood before.
-- Only adult women can be registered (followers or not). They take customers only while they are
-  inside the brothel. You yourself need no registering.
+- Any adult NPC, a woman or a man, can be registered (followers or not); this README says "she"
+  for a worker only for short. Workers take customers only while they are inside the brothel, and
+  townspeople you register keep living their own day. You yourself need no registering.
+- A man worker is paired with men customers only while *Allow same-sex* is on, and a woman worker
+  with women customers likewise.
 - A worker must be free (not in another SexLab scene) to be picked; so must the customer.
 - For a man and a woman, scenes are chosen among those whose positions each take one sex only, so
   the roles are never swapped. If none fits (rare), SexLab chooses as usual.
@@ -242,7 +274,8 @@ from their houses in Riverwood to a brothel opened in a house there, for example
   door may be locked to them; one who has not arrived after an hour and a half is let in if you
   are in the brothel, and otherwise goes home.
 - **Going home.** A visitor goes back to their day once served (or turned down), after *Hours they
-  wait*, or at closing time. Turning the option off sends everyone home.
+  wait*, or at closing time. Turning the option off sends everyone home. A visitor you register as
+  a worker is no longer a customer: they stay until closing time.
 - A visitor of the same sex as the worker is only served while *Allow same-sex* is on.
 - SkyrimNet knows who each visitor is, so a married man may well have something to say about it.
 
@@ -250,7 +283,7 @@ from their houses in Riverwood to a brothel opened in a house there, for example
 
 Pick an owner on the *Owner* page. The owner takes *House's share* of every payment.
 
-- **You as owner.** In the brothel, talk to anyone and pick *(Introduce one of the girls)*. You
+- **You as owner.** In the brothel, talk to anyone and pick *(Introduce one of the workers)*. You
   choose which free worker to recommend (the AI writes each line in your voice); the person
   answers, walks over to her and makes the usual offer.
 - **An NPC as owner.** While you and the owner are both in the brothel, the owner makes a round
@@ -259,24 +292,57 @@ Pick an owner on the *Owner* page. The owner takes *House's share* of every paym
   otherwise the best earner is praised). While every worker is busy, the owner keeps a waiting
   customer in good spirits or tells you how business is going; the same thing is not said twice in
   a row.
-- An NPC owner recommends you only while *You work as one of the girls* and *Send customers to you
-  too* are both on.
+- An NPC owner recommends you only while *You work as one of the workers* and *Send customers to
+  you too* are both on.
 
 ## Workers going after customers
 
 With *Workers invite customers* on, a free worker of level 5 or more walks up to a free customer
 at the *Invitation interval* and offers her company in her own words. Whether he accepts (and
 pays) is set by *Chance a customer accepts*, and he answers accordingly. Workers below level 5
-never do; they are still too unwilling.
+never do; they are still too unwilling. A worker goes after someone they know first (see
+*Acquaintances and family* below).
 
-You can do the same while *You work as one of the girls* is on: talk to a customer in the brothel
-and pick *(Offer your company)*. The same chance decides your invitations.
+You can do the same while *You work as one of the workers* is on: talk to a customer in the
+brothel and pick *(Offer your company)*. The same chance decides your invitations.
 
 Offers and invitations no longer all come out the same ("50 gold for your time"): each one is
 given a way of being made, picked from `SKSE/Plugins/skyrimnet_Brothel/approaches.json` and never
 the same twice in a row (a shy customer, a blunt one, a worker who offers a drink first, one who
 whispers, and so on). The two ways offered to you when you invite a customer come from the same
 file. Edit the file to add your own.
+
+## Acquaintances and family
+
+Workers and customers may already know each other.
+
+- **Who knows whom.** Friends, close friends, allies, lovers, rivals and enemies, as the game
+  records them, and *regulars*: a customer who has paid for that worker before is remembered as
+  one of their regulars.
+- **The AI is told.** When such a pair talks (an offer, an invitation, your own conversation), the
+  AI learns how they know each other, so a lover, an old friend or a regular is greeted as one.
+- **Known faces first.** When a customer is picked for a worker (sending a customer, the automatic
+  timer, a worker's invitation), someone the worker knows comes first, the nearest of them.
+- **Family never do business together.** Parents and children, brothers and sisters, husbands and
+  wives, aunts and uncles, cousins, grandparents and in-laws, as Skyrim, its DLC and the
+  Unofficial Patch record them (`families.json`), are never paired, whatever the settings. Instead,
+  a relative in the brothel who comes close to a worker, or a townsperson who walks in while one
+  is there, recognises them and reacts ("Why are you here...?"), and the worker answers; at most
+  once a day for the same two.
+
+## Buying a worker
+
+While *You work as one of the workers* is off and *Buy workers* is on, talk to a worker in the
+brothel and pick *(Buy their company)*:
+
+1. You choose how to put your offer (the AI writes the lines in your voice).
+2. The worker answers. With *Always accept* on, or *Allow refusing* off, they always agree;
+   otherwise the higher their level, the likelier (about half at level 1, always at level 10).
+3. If they agree, you pay *Gold per customer* from your own gold (the offer is not made if you
+   have too little), pick a position or leave it to them, and the scene starts.
+
+The gold counts toward the worker's level and the brothel's, the owner takes their share as with
+any customer, and you become one of the worker's regulars.
 
 ## Several brothels
 
@@ -288,16 +354,17 @@ You can run up to three brothels at once (a fourth slot is kept for later use).
   brothels makes it the current one.
 - Each brothel has its own customers, hired workers, owner, level and townsfolk. The MCM settings
   are shared by all of them.
-- Registered workers are shared: a worker takes customers in whichever brothel she is in.
+- Registered workers are shared: a worker takes customers in whichever brothel they are in.
 - *Close the selected brothel* closes the one picked in the *Brothel list*.
 
 ## Hired workers
 
-Set *Hired workers* above 0 and the brothel hires that many women of its own. They appear in the
-current brothel, already registered as workers, at *Hired workers' level*, and stay there.
+Set *Hired workers* above 0 and the brothel hires that many workers of its own: women, men or
+both, as *Hired workers' sex* says. They appear in the current brothel, already registered as
+workers, at *Hired workers' level*, and stay there.
 
-- Lowering the number lets some go once the menu closes; one with a customer stays until she is
-  done.
+- Lowering the number, or changing their sex, lets some go once the menu closes; one with a
+  customer stays until done.
 - A hired worker who is unregistered leaves for good. All of a brothel's hired workers leave when
   it is closed.
 - Each brothel hires its own.
@@ -317,7 +384,7 @@ You get the *Manage Brothel* lesser power when you load a save. Cast it to open 
 
 - the current brothel and how many you have,
 - *Add this interior as a brothel* and *Close a brothel* (pick one, then confirm),
-- *Register female followers* and *Unregister followers*,
+- *Register followers* and *Unregister followers*,
 - *Customers*, *Customers' sex*, *Hired workers* and *Hired workers' level*.
 
 It changes the same settings as the MCM. It needs UIExtensions.
@@ -368,6 +435,32 @@ How 1.6x differs from P+:
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
 
+## What is new in 0.3.0
+
+- **Men workers.** Any adult man can be registered, and *Hired workers' sex* (women only, men
+  only, or both) sets whom the brothel hires and whom *Register followers* takes. Women only by
+  default. The texts the AI and you read no longer assume a woman ("one of the workers", not "one
+  of the girls").
+- **Acquaintances.** A worker and a customer who know each other (friends, lovers, rivals and so
+  on, or a regular who has paid for that worker before) talk like it, and someone the worker knows
+  is picked as their customer first.
+- **Family.** Relatives never do business together. A relative who finds a worker in the brothel
+  reacts on the spot instead.
+- **Buying a worker.** With *You work as one of the workers* off, pick *(Buy their company)* in
+  conversation with a worker and pay from your own gold.
+- **A reordered MCM.** Settings that go together are next to each other, under headings.
+- **No customers of its own.** *Customers* now goes down to 0, for a brothel served only by the
+  townsfolk and the NPCs who are there.
+- **Fixes:**
+  - Several MCM buttons pressed in one visit to the menu all run. Before, only the last one did,
+    so *Add this interior as a brothel* followed by *Unregister followers* added no brothel.
+  - A townsperson registered as a worker while visiting is no longer sent home as a served
+    customer.
+  - *Current brothel* in the MCM shows the right brothel after loading a save. It is updated each
+    time the menu opens.
+  - A customer who was with a worker when you lowered *Customers* leaves once done, instead of
+    staying until the next change.
+
 ## What is new in 0.2.1
 
 - **Taking customers yourself is much quicker.** In a busy brothel your conversation waited for
@@ -409,9 +502,9 @@ go home, save, then disable the mod.
 ## Files
 
 - `skyrimnet_Brothel.esp`: the quest, the customer NPCs (men and women) and the leveled lists of
-  their looks, the hired worker NPC, the *Manage Brothel* power, the accept / refuse box for the
-  player, the owner's and your conversation topics, and the built-in choices quest with its
-  dialogue.
+  their looks, the hired worker NPCs (women and men), the *Manage Brothel* power, the accept /
+  refuse box for the player, the owner's and your conversation topics (introducing a worker,
+  offering your company, buying a worker's), and the built-in choices quest with its dialogue.
 - `SEQ/skyrimnet_Brothel.seq`: lets the choices quest's dialogue work from the start of a game.
 - `Scripts/`: the compiled scripts; `Scripts/Source/` has their source. `skyrimnet_BrothelSLP` holds
   the SexLab P+ calls and `skyrimnet_BrothelSL16` the SexLab 1.6x ones (untested).
@@ -419,6 +512,9 @@ go home, save, then disable the mod.
   `skyrimnet_BrothelManageEffect` is the *Manage Brothel* power.
 - `SKSE/Plugins/skyrimnet_Brothel/gossip.json`: the workers' small-talk topics; a translation may
   replace it.
+- `SKSE/Plugins/skyrimnet_Brothel/families.json`: the family ties of Skyrim's, its DLC's and the
+  Unofficial Patch's NPCs (who is whose parent, sibling, spouse and so on), made from the game's
+  relationship records, which scripts cannot read. NPCs from other mods are not in it.
 - `SKSE/Plugins/skyrimnet_Brothel/approaches.json`: the ways offers and invitations are made
   (English, read by the LLM).
 - `SKSE/Plugins/skyrimnet_Brothel/choices.json`: settings of the built-in choices (reply count,

@@ -60,13 +60,30 @@
 					}
 				},
 				{
+					"type": "header",
+					"text": "$SNB_HeaderCustomers"
+				},
+				{
 					"id": "iCustomerCount:General",
 					"type": "slider",
 					"text": "$SNB_CustomerCount",
 					"help": "$SNB_CustomerCountHelp",
 					"valueOptions": {
-						"min": 1,
+						"min": 0,
 						"max": 10,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iMaxConcurrent:General",
+					"type": "slider",
+					"text": "$SNB_MaxConcurrent",
+					"help": "$SNB_MaxConcurrentHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 12,
 						"step": 1,
 						"formatString": "{0}",
 						"sourceType": "ModSettingInt"
@@ -87,15 +104,6 @@
 					}
 				},
 				{
-					"id": "bLocalCustomers:General",
-					"type": "toggle",
-					"text": "$SNB_LocalCustomers",
-					"help": "$SNB_LocalCustomersHelp",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
 					"id": "bAllowSameSex:General",
 					"type": "toggle",
 					"text": "$SNB_AllowSameSex",
@@ -105,16 +113,29 @@
 					}
 				},
 				{
-					"id": "iMaxConcurrent:General",
-					"type": "slider",
-					"text": "$SNB_MaxConcurrent",
-					"help": "$SNB_MaxConcurrentHelp",
+					"id": "bLocalCustomers:General",
+					"type": "toggle",
+					"text": "$SNB_LocalCustomers",
+					"help": "$SNB_LocalCustomersHelp",
 					"valueOptions": {
-						"min": 1,
-						"max": 12,
-						"step": 1,
-						"formatString": "{0}",
-						"sourceType": "ModSettingInt"
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderScene"
+				},
+				{
+					"id": "iBedMode:General",
+					"type": "enum",
+					"text": "$SNB_BedMode",
+					"help": "$SNB_BedModeHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"$SNB_BedFollowSexLab",
+							"$SNB_BedAlways"
+						]
 					}
 				},
 				{
@@ -200,6 +221,24 @@
 					}
 				},
 				{
+					"id": "sPickedLevel:General",
+					"type": "text",
+					"text": "$SNB_PickedLevel",
+					"help": "$SNB_PickedLevelHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sPickedNext:General",
+					"type": "text",
+					"text": "$SNB_PickedNext",
+					"help": "$SNB_PickedNextHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
 					"type": "text",
 					"text": "$SNB_UnregisterPicked",
 					"help": "$SNB_UnregisterPickedHelp",
@@ -207,6 +246,10 @@
 						"type": "CallFunction",
 						"function": "UnregisterPickedWorker"
 					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderFollowers"
 				},
 				{
 					"type": "text",
@@ -227,24 +270,6 @@
 					}
 				},
 				{
-					"id": "sPickedLevel:General",
-					"type": "text",
-					"text": "$SNB_PickedLevel",
-					"help": "$SNB_PickedLevelHelp",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sPickedNext:General",
-					"type": "text",
-					"text": "$SNB_PickedNext",
-					"help": "$SNB_PickedNextHelp",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
 					"type": "header",
 					"text": "$SNB_HeaderHired"
 				},
@@ -259,6 +284,20 @@
 						"step": 1,
 						"formatString": "{0}",
 						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iHiredSex:General",
+					"type": "enum",
+					"text": "$SNB_HiredSex",
+					"help": "$SNB_HiredSexHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"$SNB_SexWomenOnly",
+							"$SNB_SexMenOnly",
+							"$SNB_VisitorBoth"
+						]
 					}
 				},
 				{
@@ -294,19 +333,6 @@
 					"help": "$SNB_AllowRefuseHelp",
 					"valueOptions": {
 						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"id": "iBedMode:General",
-					"type": "enum",
-					"text": "$SNB_BedMode",
-					"help": "$SNB_BedModeHelp",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"$SNB_BedFollowSexLab",
-							"$SNB_BedAlways"
-						]
 					}
 				},
 				{
@@ -419,6 +445,15 @@
 					}
 				},
 				{
+					"id": "iPlayerServeKey:General",
+					"type": "keymap",
+					"text": "$SNB_PlayerServeKey",
+					"help": "$SNB_PlayerServeKeyHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
 					"id": "sPlayerLevel:General",
 					"type": "text",
 					"text": "$SNB_PlayerLevel",
@@ -434,6 +469,19 @@
 					"help": "$SNB_PlayerNextHelp",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderBuy"
+				},
+				{
+					"id": "bPlayerBuys:General",
+					"type": "toggle",
+					"text": "$SNB_PlayerBuys",
+					"help": "$SNB_PlayerBuysHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
 					}
 				},
 				{
@@ -454,15 +502,6 @@
 					"type": "keymap",
 					"text": "$SNB_RegisterKey",
 					"help": "$SNB_RegisterKeyHelp",
-					"valueOptions": {
-						"sourceType": "ModSettingInt"
-					}
-				},
-				{
-					"id": "iPlayerServeKey:General",
-					"type": "keymap",
-					"text": "$SNB_PlayerServeKey",
-					"help": "$SNB_PlayerServeKeyHelp",
 					"valueOptions": {
 						"sourceType": "ModSettingInt"
 					}
@@ -526,6 +565,19 @@
 					}
 				},
 				{
+					"id": "iMaxVisitors:General",
+					"type": "slider",
+					"text": "$SNB_MaxVisitors",
+					"help": "$SNB_MaxVisitorsHelp",
+					"valueOptions": {
+						"min": 1,
+						"max": 5,
+						"step": 1,
+						"formatString": "{0}",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
 					"id": "iVisitStart:General",
 					"type": "slider",
 					"text": "$SNB_VisitStart",
@@ -546,19 +598,6 @@
 					"valueOptions": {
 						"min": 0,
 						"max": 23,
-						"step": 1,
-						"formatString": "{0}",
-						"sourceType": "ModSettingInt"
-					}
-				},
-				{
-					"id": "iMaxVisitors:General",
-					"type": "slider",
-					"text": "$SNB_MaxVisitors",
-					"help": "$SNB_MaxVisitorsHelp",
-					"valueOptions": {
-						"min": 1,
-						"max": 5,
 						"step": 1,
 						"formatString": "{0}",
 						"sourceType": "ModSettingInt"
