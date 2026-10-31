@@ -2,10 +2,10 @@
 	"modName": "skyrimnet_Brothel",
 	"displayName": "$SNB_ModName",
 	"minMcmVersion": 9,
-	"cursorFillMode": "topToBottom",
 	"pages": [
 		{
 			"pageDisplayName": "$SNB_PageBrothel",
+			"cursorFillMode": "topToBottom",
 			"content": [
 				{
 					"type": "header",
@@ -123,7 +123,8 @@
 				},
 				{
 					"type": "header",
-					"text": "$SNB_HeaderScene"
+					"text": "$SNB_HeaderScene",
+					"position": 1
 				},
 				{
 					"id": "iBedMode:General",
@@ -194,6 +195,7 @@
 		},
 		{
 			"pageDisplayName": "$SNB_PageWorkers",
+			"cursorFillMode": "topToBottom",
 			"content": [
 				{
 					"type": "header",
@@ -245,6 +247,24 @@
 					"action": {
 						"type": "CallFunction",
 						"function": "UnregisterPickedWorker"
+					}
+				},
+				{
+					"id": "iRegisterKey:General",
+					"type": "keymap",
+					"text": "$SNB_RegisterKey",
+					"help": "$SNB_RegisterKeyHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iServeKey:General",
+					"type": "keymap",
+					"text": "$SNB_ServeKey",
+					"help": "$SNB_ServeKeyHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt"
 					}
 				},
 				{
@@ -315,7 +335,8 @@
 				},
 				{
 					"type": "header",
-					"text": "$SNB_HeaderAnswer"
+					"text": "$SNB_HeaderAnswer",
+					"position": 1
 				},
 				{
 					"id": "bAlwaysAccept:General",
@@ -421,6 +442,7 @@
 		},
 		{
 			"pageDisplayName": "$SNB_PagePlayer",
+			"cursorFillMode": "topToBottom",
 			"content": [
 				{
 					"type": "header",
@@ -473,7 +495,8 @@
 				},
 				{
 					"type": "header",
-					"text": "$SNB_HeaderBuy"
+					"text": "$SNB_HeaderBuy",
+					"position": 1
 				},
 				{
 					"id": "bPlayerBuys:General",
@@ -483,33 +506,12 @@
 					"valueOptions": {
 						"sourceType": "ModSettingBool"
 					}
-				},
-				{
-					"type": "header",
-					"text": "$SNB_HeaderKeys"
-				},
-				{
-					"id": "iServeKey:General",
-					"type": "keymap",
-					"text": "$SNB_ServeKey",
-					"help": "$SNB_ServeKeyHelp",
-					"valueOptions": {
-						"sourceType": "ModSettingInt"
-					}
-				},
-				{
-					"id": "iRegisterKey:General",
-					"type": "keymap",
-					"text": "$SNB_RegisterKey",
-					"help": "$SNB_RegisterKeyHelp",
-					"valueOptions": {
-						"sourceType": "ModSettingInt"
-					}
 				}
 			]
 		},
 		{
 			"pageDisplayName": "$SNB_PageAuto",
+			"cursorFillMode": "topToBottom",
 			"content": [
 				{
 					"type": "header",
@@ -539,7 +541,8 @@
 				},
 				{
 					"type": "header",
-					"text": "$SNB_HeaderVisitors"
+					"text": "$SNB_HeaderVisitors",
+					"position": 1
 				},
 				{
 					"id": "bVisitors:General",
@@ -629,6 +632,7 @@
 		},
 		{
 			"pageDisplayName": "$SNB_PageOwner",
+			"cursorFillMode": "topToBottom",
 			"content": [
 				{
 					"type": "header",
@@ -685,6 +689,7 @@
 		},
 		{
 			"pageDisplayName": "$SNB_PageDebug",
+			"cursorFillMode": "topToBottom",
 			"content": [
 				{
 					"type": "header",
@@ -701,7 +706,8 @@
 				},
 				{
 					"type": "header",
-					"text": "$SNB_HeaderDebugLevels"
+					"text": "$SNB_HeaderDebugLevels",
+					"position": 1
 				},
 				{
 					"id": "iDebugBrothelLevel:General",

@@ -68,8 +68,9 @@ throughout.
 
 ## How to play
 
-1. **Set the hotkeys** in the MCM (*You* page): *Send a customer*, *Register / unregister
-   worker* and, if you want to work yourself, *Take a customer yourself*. They are unset at first.
+1. **Set the hotkeys** in the MCM: *Register / unregister worker* and *Send a customer* (*Workers*
+   page) and, if you want to work yourself, *Take a customer yourself* (*You* page). They are
+   unset at first.
 2. **Make a brothel.** Walk into any interior, choose *Add this interior as a brothel* in the MCM
    (or in the *Manage Brothel* power) and close the menu. Customers move in (three by default, set
    with *Customers*, 0 to 10) and wander about. Their looks are picked at random from vanilla men
@@ -115,8 +116,8 @@ throughout.
 
 ## MCM settings
 
-The menu has six pages. Since 0.3.0 each page is grouped under headings, with settings that go
-together next to each other. Buttons that act on the world (adding or closing a brothel,
+The menu has six pages. Since 0.3.0 each page is grouped under headings, each heading's settings
+kept together in one column, with settings that go together next to each other. Buttons that act on the world (adding or closing a brothel,
 registering followers) do their work once the menu closes; several pressed in one visit all run,
 in the order pressed.
 
@@ -149,6 +150,8 @@ in the order pressed.
 | Registered workers / Worker list | | Who is registered; `*` = in the brothel now. |
 | Selected worker's level / gold to the next level | | The level of the worker picked in the list. |
 | Unregister the selected worker | | Unregisters the worker picked in the list. |
+| Register / unregister worker | unset | Hotkey: aim at someone and press it to register them, or to unregister them. |
+| Send a customer | unset | Hotkey: a free customer walks up to a free worker in the brothel. |
 | *Followers* | | |
 | Register followers | | Registers every follower near you now, of the sexes *Hired workers' sex* picks. Followers waiting elsewhere are not found. |
 | Unregister followers | | Unregisters every registered worker who is one of your followers, wherever they are. |
@@ -179,9 +182,6 @@ in the order pressed.
 | Your level / gold to the next level | | Your own level as a worker. |
 | *Buying workers* | | |
 | Buy workers | On | While *You work as one of the workers* is off, *(Buy their company)* is offered when you talk to a worker in the brothel; see *Buying a worker* below. |
-| *Hotkeys* | | |
-| Send a customer | unset | Hotkey. |
-| Register / unregister worker | unset | Hotkey. |
 
 **Automatic & town**
 
@@ -448,7 +448,9 @@ go home, save, then disable the mod.
   reacts on the spot instead.
 - **Buying a worker.** With *You work as one of the workers* off, pick *(Buy their company)* in
   conversation with a worker and pay from your own gold.
-- **A reordered MCM.** Settings that go together are next to each other, under headings.
+- **A reordered MCM.** Settings that go together are next to each other, under headings, each
+  heading's settings in one column. The hotkeys for registering workers and sending a customer
+  are on the *Workers* page.
 - **No customers of its own.** *Customers* now goes down to 0, for a brothel served only by the
   townsfolk and the NPCs who are there.
 - **Fixes:**
