@@ -122,6 +122,15 @@
 					}
 				},
 				{
+					"id": "bFollowerCustomers:General",
+					"type": "toggle",
+					"text": "$SNB_FollowerCustomers",
+					"help": "$SNB_FollowerCustomersHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
 					"type": "header",
 					"text": "$SNB_HeaderScene",
 					"position": 1

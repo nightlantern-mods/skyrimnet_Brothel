@@ -3141,6 +3141,7 @@ Function ReleaseTalkAfterChoices()
 		waited += 0.5
 	EndWhile
 	ReleaseTalk()
+	RelockPlayerScenes()
 EndFunction
 
 ; ServePlayer's answer and scene through the choices menu. False when it could not take the offer
@@ -3466,6 +3467,9 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag 
 		threadID = StartSceneOnce(sexLab, positions, center, furniturePref, positionTag)
 		If threadID >= 0
 			playing = StillPlaying(sexLab, positions)
+			If !playing
+				EndAbandonedThread(sexLab, threadID)
+			EndIf
 		EndIf
 		If GetModSettingBool("bDebugLog:General")
 			DebugLog("Scene (SexLab " + SexLabName() + ") for " + worker.GetDisplayName() + " and " + positions[1].GetDisplayName() \
@@ -3495,6 +3499,38 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag 
 	dealThreads[slot] = threadID
 	dealStates[slot] = DealInScene
 	dealStarted[slot] = Utility.GetCurrentRealTime()
+	RelockPlayer(slot)
+EndFunction
+
+; SexLab P+ holds the player in a scene with SetActorMovement (AI-driven, movement and the like
+; disabled), set from the AnimatingFaction rank, and lets go of it when the scene ends. The brothel
+; starts the player's scene while the customer is still answering, and by the time he was done the
+; player could move again: Space jumped out of the animation, the partner kept playing it. So the
+; hold is put back once the scene is confirmed and again once the customer has finished speaking,
+; through SexLab's own UpdateAnimatingActorMovement, so its end lets go as usual. P+ only.
+Function RelockPlayer(Int slot)
+	Actor player = Game.GetPlayer()
+	If legacySexLab || slot < 0 || dealStates[slot] != DealInScene || dealThreads[slot] < 0 \
+			|| (dealWorkers[slot] != player && dealCustomers[slot] != player)
+		Return
+	EndIf
+	SexLabFramework sexLab = SexLabUtil.GetAPI()
+	If !sexLab || !sexLab.IsActorActive(player)
+		Return
+	EndIf
+	sslThreadController thread = sexLab.GetController(dealThreads[slot])
+	If thread && thread.GetState() == "Animating"
+		thread.UpdateAnimatingActorMovement(player)
+		PlayerTrace("scene hold put back on the player")
+	EndIf
+EndFunction
+
+Function RelockPlayerScenes()
+	Int i = 0
+	While i < DealSlots
+		RelockPlayer(i)
+		i += 1
+	EndWhile
 EndFunction
 
 Int Property SceneAttempts = 3 AutoReadOnly
@@ -3507,6 +3543,25 @@ Float Property SceneConfirmSeconds = 3.0 AutoReadOnly
 ; A scene SexLab P+ cannot play (its animation file missing) has both actors marked active for a
 ; few more seconds while it restores them: one look at six seconds took such a scene for playing.
 ; So it must still hold the pair at every look.
+; A scene SexLab accepted but never played may leave its thread behind, still "animating" with
+; no scene in it: it never sends AnimationEnd, so other mods that follow running scenes (SkyrimNet
+; SexLab polls each one) keep working on it, and their errors and queued updates pile up until
+; Papyrus falls behind. Such a thread is ended here: one still animating sends AnimationEnd as a
+; normal end would; one still being set up is reset. An ended or free thread is left alone.
+Function EndAbandonedThread(SexLabFramework sexLab, Int threadID)
+	sslThreadController thread = sexLab.GetController(threadID)
+	If !thread
+		Return
+	EndIf
+	String threadState = thread.GetState()
+	If threadState == "Animating" || threadState == "Making" || threadState == "Making_M" || threadState == "Prepare"
+		thread.EndAnimation(False)
+		If GetModSettingBool("bDebugLog:General")
+			DebugLog("Scene thread " + threadID + " never played (state " + threadState + "): ended")
+		EndIf
+	EndIf
+EndFunction
+
 Bool Function StillPlaying(SexLabFramework sexLab, Actor[] positions)
 	Utility.Wait(SceneCheckSeconds)
 	Int check = 0
@@ -3878,14 +3933,17 @@ Actor Function PickCustomer(SexLabFramework sexLab, Actor worker)
 		EndIf
 		i += 1
 	EndWhile
+	; Your followers came with you, not for the brothel: they are picked only while the MCM's
+	; "Followers can be customers" is on.
 	If GetModSettingBool("bLocalCustomers:General")
 		Actor player = Game.GetPlayer()
+		Bool followersToo = GetModSettingBool("bFollowerCustomers:General")
 		Actor[] nearby = MiscUtil.ScanCellNPCs(player, 0.0, None, True)
 		i = 0
 		While i < nearby.Length && count < present.Length
 			Actor candidate = nearby[i]
 			If candidate != player && customers.Find(candidate) < 0 && workers.Find(candidate) < 0 && visitors.Find(candidate) < 0 \
-					&& !candidate.IsChild() && IsPerson(candidate) && !candidate.IsHostileToActor(player) \
+					&& !candidate.IsChild() && IsPerson(candidate) && !candidate.IsHostileToActor(player) && (followersToo || !IsFollower(candidate)) \
 					&& IsFreeCustomer(sexLab, candidate, worker)
 				present[count] = candidate
 				count += 1

@@ -1,4 +1,4 @@
-# SkyrimNet Brothel 0.3.0
+# SkyrimNet Brothel 0.3.1
 
 Run your own brothel. Make any interior your brothel, register workers, women or men (followers or
 anyone else), and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the
@@ -15,7 +15,9 @@ yourself much quicker, works with SkyrimNet beta 29, and fixes Delphine's bed (s
 
 New in 0.3.0: men workers, customers and workers who know each other (friends, lovers, regulars)
 and family who never do business together, buying a worker's company yourself, a reordered MCM, and
-a brothel with no customers of its own (see [What is new in 0.3.0](#what-is-new-in-030)).
+a brothel with no customers of its own (see [What is new in 0.3.0](#what-is-new-in-030)). 0.3.1
+stops picking your followers as customers unless you want them, keeps you in your own scenes, and
+ends scenes SexLab never played (see [What is new in 0.3.1](#what-is-new-in-031)).
 
 > **SexLab 1.6x support is untested.** Since 0.1.6 the mod also runs on classic SexLab 1.6x
 > (written against 1.66b), but that support has **not been tested in game on 1.6x**: it was only
@@ -134,7 +136,8 @@ in the order pressed.
 | Pairs at once | 5 | 1 to 12 workers with customers at the same time. Your own customer does not count. Each pair needs a free customer, and SexLab plays at most 15 scenes at once. |
 | Customers' sex | Men | Men, women, or half and half (with an odd number, one more man). Changing it swaps customers once the menu closes. |
 | Allow same-sex | Off | Off: customers are always of the other sex from the worker (or you). On: same-sex pairs too. |
-| Anyone can be a customer | On | Other adult NPCs in the brothel can be customers too. Registered workers, a worker's family and hostile NPCs never are. |
+| Anyone can be a customer | On | Other adult NPCs in the brothel can be customers too. Registered workers and hostile NPCs never are, and your followers only with the setting below; a worker's relatives are never paired with that worker (they can be customers of the others). |
+| Followers can be customers | Off | Your followers in the brothel can be customers too, while *Anyone can be a customer* is on. Followers registered as workers never are. |
 | *Scenes* | | |
 | Beds | Always use | *Always use*: the scene takes place on a free bed in the brothel (a double bed first), or where the pair stands if none is free. *Follow SexLab*: SexLab's own NPC bed setting decides. |
 | *Payment* | | |
@@ -325,10 +328,11 @@ Workers and customers may already know each other.
   timer, a worker's invitation), someone the worker knows comes first, the nearest of them.
 - **Family never do business together.** Parents and children, brothers and sisters, husbands and
   wives, aunts and uncles, cousins, grandparents and in-laws, as Skyrim, its DLC and the
-  Unofficial Patch record them (`families.json`), are never paired, whatever the settings. Instead,
-  a relative in the brothel who comes close to a worker, or a townsperson who walks in while one
-  is there, recognises them and reacts ("Why are you here...?"), and the worker answers; at most
-  once a day for the same two.
+  Unofficial Patch record them (`families.json`), are never paired with each other, whatever the
+  settings; each can still be paired with anyone else (a worker's mother can be another worker's
+  customer). Instead, a relative in the brothel who comes close to a worker, or a townsperson who
+  walks in while one is there, recognises them and reacts ("Why are you here...?"), and the
+  worker answers; at most once a day for the same two.
 
 ## Buying a worker
 
@@ -434,6 +438,23 @@ How 1.6x differs from P+:
 
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
+
+## What is new in 0.3.1
+
+- **Followers as customers, if you want:** your followers are no longer picked as customers
+  unless *Followers can be customers* is on (*Brothel* page, off by default). Followers registered
+  as workers never are.
+- **You stay in your own scenes.** In a scene you were in (taking a customer, or buying a worker),
+  Space could make you jump out of the animation once the customer had finished speaking, while
+  the partner kept playing it. The brothel now puts SexLab P+'s hold back on you once the scene is
+  confirmed and again after the conversation, and SexLab lets go of it at the end as usual. In the
+  first seconds of a scene a jump can still happen; you are put back into the scene right after.
+- **Scenes SexLab never played are ended.** When SexLab accepts a scene but cannot play it, the
+  brothel tries another; the thread of the failed one could stay behind marked as running, and
+  mods that follow running scenes (SkyrimNet SexLab) kept working on it, with errors piling up in
+  the Papyrus log. Such a thread is now ended.
+- **Family, clarified:** a worker's relatives are never paired with that worker, but can be
+  customers of the other workers.
 
 ## What is new in 0.3.0
 
