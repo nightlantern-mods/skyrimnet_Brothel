@@ -1,8 +1,16 @@
-# SkyrimNet Brothel 0.3.1
+# SkyrimNet Brothel 0.4.0
+
+> **New in 0.4.0: OStim Standalone support.** The brothel now runs on **OStim Standalone** as well
+> as on SexLab. Install either one: the mod finds out which is there and uses it. With both
+> installed, the new MCM setting *Sex framework* picks which one plays the brothel's scenes, and you
+> can switch at any time while you play. Everything works on OStim: workers and customers,
+> townsfolk, the owner, invitations, buying a worker, taking customers yourself with the position
+> you pick, free beds for every pair, pay and levels. See [OStim](#ostim) and
+> [What is new in 0.4.0](#what-is-new-in-040).
 
 Run your own brothel. Make any interior your brothel, register workers, women or men (followers or
 anyone else), and send customers to them, or take customers yourself. SkyrimNet's AI voices the customer's offer and the
-worker's answer, SexLab plays the scene, and the customer pays up front. Since 0.1.7 the town's own
+worker's answer, SexLab or OStim plays the scene, and the customer pays up front. Since 0.1.7 the town's own
 people can come as customers, the brothel can have an owner who takes a share and runs it, workers
 can go after customers themselves, and the brothel and every worker gain levels.
 
@@ -31,7 +39,7 @@ ends scenes SexLab never played (see [What is new in 0.3.1](#what-is-new-in-031)
 | Skyrim Special Edition / Anniversary Edition | Built and tested on 1.6.1170. |
 | [SKSE64](https://skse.silverlock.org/) | |
 | [SkyrimNet](https://github.com/MinLL/SkyrimNet-GamePlugin) **beta 28 or later** | Uses its Papyrus API: DirectNarration, RegisterAction, speech queue functions. |
-| SexLab P+ (SexLab Framework PPLUS) **or** SexLab 1.6x | Tested on P+ 2.18.1. On P+ it uses the P+ scene API (`StartScene`, scene IDs). SexLab 1.6x (1.66b) is supported since 0.1.6 but **untested** (see below). |
+| A sex framework: [OStim Standalone](https://www.nexusmods.com/skyrimspecialedition/mods/98163) **or** SexLab P+ (SexLab Framework PPLUS) **or** SexLab 1.6x | At least one of them. **OStim Standalone** (since 0.4.0): tested on 7.5.1, needs its API 7.0 or later. **SexLab P+**: tested on 2.18.1; the mod uses the P+ scene API (`StartScene`, scene IDs). SexLab 1.6x (1.66b) is supported since 0.1.6 but **untested** (see below). With OStim and SexLab both installed, the MCM picks which one is used. |
 | [SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604) | |
 | [MCM Helper](https://www.nexusmods.com/skyrimspecialedition/mods/53000) | The settings menu. |
 | [PapyrusUtil SE](https://www.nexusmods.com/skyrimspecialedition/mods/13048) | Moves the customer with a package override; reads the position, topic and phrase lists. |
@@ -50,6 +58,10 @@ SkyrimNet Player Choices (and its Starters add-on) installed for other mods; the
 
 Install with your mod manager and enable `skyrimnet_Brothel.esp`. It is ESL-flagged and needs no
 load-order slot. It can be added to an existing save.
+
+**Upgrading from 0.3.x:** install over the old version and load your save. The plugin is
+unchanged. If you have both OStim and SexLab, the brothel keeps using SexLab until you pick OStim
+under *Sex framework* on the *Brothel* page.
 
 **Upgrading from 0.2.x:** install over the old version (plugin included) and load your save. The
 MCM pages are reordered, but your values are kept. Workers you registered stay registered, and
@@ -139,7 +151,8 @@ in the order pressed.
 | Anyone can be a customer | On | Other adult NPCs in the brothel can be customers too. Registered workers and hostile NPCs never are, and your followers only with the setting below; a worker's relatives are never paired with that worker (they can be customers of the others). |
 | Followers can be customers | Off | Your followers in the brothel can be customers too, while *Anyone can be a customer* is on. Followers registered as workers never are. |
 | *Scenes* | | |
-| Beds | Always use | *Always use*: the scene takes place on a free bed in the brothel (a double bed first), or where the pair stands if none is free. *Follow SexLab*: SexLab's own NPC bed setting decides. |
+| Beds | Always use | *Always use*: the scene takes place on a free bed in the brothel (a double bed first), or where the pair stands if none is free. *Follow the framework*: SexLab's or OStim's own bed setting decides. |
+| Sex framework | SexLab | Only when both OStim and SexLab are installed: which one plays the brothel's scenes (with only one installed, that one is used). A change applies to the scenes that start afterwards; scenes already starting or playing finish in the framework they began in. |
 | *Payment* | | |
 | Gold per customer | 50 | 0 to 1000, paid up front when the offer is accepted. Also the price when you buy a worker. |
 | *Brothel level* | | |
@@ -243,7 +256,7 @@ decide it.
   townspeople you register keep living their own day. You yourself need no registering.
 - A man worker is paired with men customers only while *Allow same-sex* is on, and a woman worker
   with women customers likewise.
-- A worker must be free (not in another SexLab scene) to be picked; so must the customer.
+- A worker must be free (not in a SexLab or OStim scene) to be picked; so must the customer.
 - For a man and a woman, scenes are chosen among those whose positions each take one sex only, so
   the roles are never swapped. If none fits (rare), SexLab chooses as usual.
 - When you take a customer yourself and the scene uses a bed, you and the customer are moved to
@@ -407,6 +420,27 @@ customers pay.
 - Levels are shown in the MCM, and a notification says when one goes up. The *Debug* page can set
   them directly.
 
+## OStim
+
+Since 0.4.0 the brothel runs on OStim Standalone (tested on 7.5.1), on its own or alongside SexLab.
+
+- **Which framework.** Each time a save loads, the mod looks for `OStim.esp` and `SexLab.esm`. With
+  one of them it uses that one. With both, *Sex framework* on the *Brothel* page decides (SexLab by
+  default). Each scene keeps the framework it started in, so you can switch while scenes play: they
+  finish, are paid and end as usual, and the next ones use the other framework.
+- **Scenes.** Every pair's scene is an OStim thread. With *Beds* on *Always use*, the pair gets a free
+  bed of the brothel that OStim classes as a bed (double before single before bedroll), and two
+  pairs never share one; with *Follow the framework* OStim chooses the furniture itself.
+- **Your positions.** When you take a customer yourself, each position in `positions.json` is
+  matched to an OStim scene tag and action (`ostimTags`, `ostimActions`: missionary, doggystyle,
+  cowgirl, reversecowgirl, standing and spooning, with vaginal sex; blowjob, cunnilingus, handjob,
+  boobjob, footjob and anal sex as actions). Only the positions OStim has a scene for with your
+  partner are offered; kneeling and lotus have no OStim tag and give a vaginal sex scene.
+- **Your controls.** OStim keeps the player's controls during a scene itself (its own navigation and
+  menus work as usual). The brothel's extra hold on the player is a SexLab P+ feature only.
+- **Busy actors.** Workers and customers in a scene of either framework, the brothel's or another
+  mod's, are not picked.
+
 ## SexLab 1.6x (untested)
 
 **This support has not been tested in game.** The author plays on SexLab P+ only, so the 1.6x
@@ -438,6 +472,25 @@ How 1.6x differs from P+:
 
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
+
+## What is new in 0.4.0
+
+- **OStim Standalone support.** The brothel now plays its scenes through OStim Standalone as well
+  as SexLab, so OStim players can use the whole mod: workers and customers, townsfolk, the owner,
+  invitations, buying a worker, taking customers yourself with the position you pick, a free bed
+  for every pair, pay and levels. With both frameworks installed, the new MCM setting *Sex
+  framework* chooses which one the brothel uses, and you can switch at any time: scenes already
+  playing finish in the framework they began in. See [OStim](#ostim).
+- **The positions you are offered fit the bed.** With *Beds* on *Always use*, the positions offered
+  when you take a customer are the ones a bed of the brothel has scenes for (all of them only when
+  none has), so a scene no longer starts on the floor next to a free bed because the position you
+  picked had no bed scene.
+- **Two pairs no longer get the same bed** in a brothel with many beds: a slow bed search could
+  let the next pair start its own search at the same time.
+- **Your offers sound like you.** The way you make an offer or buy a worker is now described to the
+  AI so the lines you pick from read as your own words.
+- **The watchdog never ends a fresh deal.** A deal that ended while the watchdog was checking it
+  could have its slot taken by a new pair, which the watchdog then cleared.
 
 ## What is new in 0.3.1
 
@@ -529,8 +582,11 @@ go home, save, then disable the mod.
   refuse box for the player, the owner's and your conversation topics (introducing a worker,
   offering your company, buying a worker's), and the built-in choices quest with its dialogue.
 - `SEQ/skyrimnet_Brothel.seq`: lets the choices quest's dialogue work from the start of a game.
-- `Scripts/`: the compiled scripts; `Scripts/Source/` has their source. `skyrimnet_BrothelSLP` holds
-  the SexLab P+ calls and `skyrimnet_BrothelSL16` the SexLab 1.6x ones (untested).
+- `Scripts/`: the compiled scripts; `Scripts/Source/` has their source. `skyrimnet_BrothelOS` holds
+  the OStim Standalone calls, `skyrimnet_BrothelSL` the calls both SexLab versions share,
+  `skyrimnet_BrothelSLP` the SexLab P+ ones and `skyrimnet_BrothelSL16` the SexLab 1.6x ones
+  (untested). The main script names none of their types, so it loads with only one framework
+  installed.
   `skyrimnet_BrothelChoices*` are the built-in copy of SkyrimNet Player Choices;
   `skyrimnet_BrothelManageEffect` is the *Manage Brothel* power.
 - `SKSE/Plugins/skyrimnet_Brothel/gossip.json`: the workers' small-talk topics; a translation may
@@ -552,8 +608,10 @@ go home, save, then disable the mod.
 - `SKSE/Plugins/skyrimnet_Brothel/strings.json`: phrases built around names ("X is approaching Y.");
   a translation replaces this file too.
 - `SKSE/Plugins/skyrimnet_Brothel/positions.json`: the positions offered when you take a customer
-  yourself: SexLab scene tags (`tags`) and what each choice means (`labels`, English, read by the
-  LLM). Edit, add or remove pairs freely; keep both lists in the same order.
+  yourself: SexLab scene tags (`tags`), what each choice means (`labels`, English, read by the
+  LLM), and the OStim scene tag and action each one stands for (`ostimTags`, `ostimActions`; an
+  empty tag means the action alone). Edit, add or remove entries freely; keep all lists in the same
+  order.
 - `SKSE/SexLab/Furniture/00_skyrimnet_brothel_beds.yaml`: SexLab P+ furniture entries for
   Skyrim's common single and double beds, which SexLab P+ does not list itself, so scenes use them,
   and for the noble single bed, which SexLab P+ lists too low (pairs sank into it). SexLab P+ keeps

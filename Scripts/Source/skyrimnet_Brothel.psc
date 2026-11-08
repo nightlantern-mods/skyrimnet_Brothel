@@ -35,9 +35,15 @@ Float Property TalkDistance = 150.0 AutoReadOnly
 ; placed in front of the other one (see ApproachWorker).
 Float Property ApproachTimeoutSeconds = 20.0 AutoReadOnly
 Float Property ApproachStuckSeconds = 6.0 AutoReadOnly
-; SexLab 1.6x rather than P+: their scene APIs differ, so each call that depends on it goes to
-; skyrimnet_BrothelSL16 or skyrimnet_BrothelSLP (see DetectSexLab).
+; The sex framework in use (see DetectFramework). This script names no SexLab or OStim type: a
+; player may have only one of them, and a script naming a type that does not exist cannot be
+; linked. Each call that depends on the framework goes to skyrimnet_BrothelSL (both SexLab
+; versions), skyrimnet_BrothelSLP (P+), skyrimnet_BrothelSL16 (1.6x) or skyrimnet_BrothelOS (OStim),
+; with SexLab's API handed around as a Quest.
 Bool legacySexLab
+Bool useOStim
+Bool hasOStim
+Quest sexLabApi
 
 Cell brothelCell
 Actor[] customers
@@ -69,6 +75,7 @@ Actor[] dealWorkers
 Actor[] dealCustomers
 Int[] dealStates
 Int[] dealThreads
+Bool[] dealOStim            ; the scene's framework, fixed when it starts: OStim, else SexLab
 Int[] dealSerials
 Float[] dealStarted
 Int[] dealIdleRuns          ; watchdog runs in a row that found a scene's pair out of SexLab
@@ -117,7 +124,7 @@ EndEvent
 ; Called by the player alias on every save load: key and mod-event registrations do not survive one,
 ; and no deal or scene in progress does either.
 Function Setup()
-	DetectSexLab()
+	DetectFramework()
 	GrowCustomerSlots()
 	GrowVisitorSlots()
 	GrowBrothelSlots()
@@ -126,6 +133,7 @@ Function Setup()
 	pickingBed = False
 	RegisterKeys()
 	RegisterForModEvent("HookAnimationEnd_" + SceneHook, "OnBrothelSceneEnd")
+	RegisterForModEvent("ostim_thread_end", "OnOStimThreadEnd")
 	RegisterForModEvent("skyrimnet_BrothelChoices_ReplyChosen", "OnChoicesReplyChosen")
 	RegisterForModEvent("skyrimnet_BrothelChoices_Ended", "OnChoicesEnded")
 	RegisterForModEvent("skyrimnet_Brothel_FamilyReact", "OnFamilyReact")
@@ -234,22 +242,66 @@ Function AnswerSolicit(Actor akActor, Bool accepted)
 	EndIf
 EndFunction
 
-; Looked at on every load, as the player may have switched SexLab since the save. 1.6x's
-; SexLabUtil.GetVersion returns its own version (16601 for 1.66b); P+'s returns the version of its
-; SKSE plugin, a far larger number (or 0 without the plugin, still P+).
-Function DetectSexLab()
-	Int version = SexLabUtil.GetVersion()
-	legacySexLab = version > 0 && version < 20000
+; Looked at on every load, as the player may have switched frameworks since the save, and when the
+; MCM's choice changes. With only one of SexLab and OStim installed that one is used; with both, the
+; MCM's "Sex framework" decides (SexLab by default) which one new scenes start in. A scene keeps the
+; framework it started in (dealOStim), so a switch while scenes start or play leaves them be. SexLab's
+; API is kept whenever SexLab is installed, for those scenes. 1.6x's SexLabUtil.GetVersion returns its
+; own version (16601 for 1.66b); P+'s returns the version of its SKSE plugin, a far larger number (or
+; 0 without the plugin, still P+).
+Function DetectFramework()
+	Bool hasSexLab = Game.IsPluginInstalled("SexLab.esm")
+	hasOStim = Game.IsPluginInstalled("OStim.esp")
+	useOStim = hasOStim && (!hasSexLab || GetModSettingInt("iFramework:General") == 1)
+	sexLabApi = None
+	legacySexLab = False
+	Int version = 0
+	If hasSexLab
+		sexLabApi = skyrimnet_BrothelSL.API()
+		version = skyrimnet_BrothelSL.Version()
+		legacySexLab = version > 0 && version < 20000
+	EndIf
 	If GetModSettingBool("bDebugLog:General")
-		DebugLog("SexLab version " + version + ", using the " + SexLabName() + " calls")
+		DebugLog("Frameworks: SexLab " + hasSexLab + " (version " + version + "), OStim " + hasOStim + "; new scenes use " + FrameworkName(useOStim))
 	EndIf
 EndFunction
 
-String Function SexLabName()
-	If legacySexLab
-		Return "1.6x"
+String Function FrameworkName(Bool ostim)
+	If ostim
+		Return "OStim"
+	ElseIf !sexLabApi
+		Return "none"
+	ElseIf legacySexLab
+		Return "SexLab 1.6x"
 	EndIf
-	Return "P+"
+	Return "SexLab P+"
+EndFunction
+
+Bool Function HasFramework()
+	Return useOStim || sexLabApi
+EndFunction
+
+; Whether the actor is in a scene of either installed framework, the brothel's or another mod's: such
+; an actor is busy.
+Bool Function InScene(Actor who)
+	Return (sexLabApi && skyrimnet_BrothelSL.IsActive(sexLabApi, who)) || (hasOStim && skyrimnet_BrothelOS.IsActive(who))
+EndFunction
+
+; Whether the actor is in a scene of this framework (OStim, else SexLab).
+Bool Function InSceneOf(Bool ostim, Actor who)
+	If ostim
+		Return hasOStim && skyrimnet_BrothelOS.IsActive(who)
+	EndIf
+	Return sexLabApi && skyrimnet_BrothelSL.IsActive(sexLabApi, who)
+EndFunction
+
+; Whether the framework lets a scene use this bed (SexLab's own check; OStim has none, and the
+; brothel keeps its own track of the beds in use).
+Bool Function BedAvailable(ObjectReference bed, Bool ostim)
+	If ostim
+		Return True
+	EndIf
+	Return sexLabApi && skyrimnet_BrothelSL.IsBedAvailable(sexLabApi, bed)
 EndFunction
 
 skyrimnet_Brothel Function Brothel() Global
@@ -336,6 +388,9 @@ Event OnSettingChange(String a_ID)
 		ScheduleNextUpdate()
 	ElseIf a_ID == "bPlayerWorks:General" || a_ID == "bPlayerBuys:General"
 		UpdateOwnerTalk()
+	ElseIf a_ID == "iFramework:General"
+		; The next scenes use the new framework; scenes starting or playing keep the one they began in.
+		DetectFramework()
 	ElseIf a_ID == "sWorkerPick:General" || a_ID == "iBrothelLevelGold:General" || a_ID == "iWorkerLevelGold:General"
 		ShowLevels()
 		RefreshMenu()
@@ -1813,7 +1868,6 @@ Function PlayerRecommends(Actor customer)
 		Debug.Notification("$SNB_Busy")
 		Return
 	EndIf
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
 	Actor[] offered = new Actor[4]
 	String[] intents = Utility.CreateStringArray(MaxRecommendChoices + 1)
 	Int count = 0
@@ -1825,7 +1879,7 @@ Function PlayerRecommends(Actor customer)
 	While i < workerCount && count < MaxRecommendChoices
 		Actor worker = workers[(start + i) % workerCount]
 		If worker && worker != customer && worker != player && !worker.IsDead() && worker.GetParentCell() == brothelCell \
-				&& !IsInDeal(worker) && !sexLab.IsActorActive(worker) && IsFreeCustomer(sexLab, customer, worker)
+				&& !IsInDeal(worker) && !InScene(worker) && IsFreeCustomer(customer, worker)
 			offered[count] = worker
 			intents[count] = "recommend " + worker.GetDisplayName() + " to " + customer.GetDisplayName() \
 				+ " for tonight, saying what makes " + HimOf(worker) + " worth the money"
@@ -1850,7 +1904,7 @@ Function PlayerRecommends(Actor customer)
 		DebugLog("Owner (player) recommends to " + customer.GetDisplayName() + ": pick " + picked + " of " + count)
 	EndIf
 	If picked >= 0 && picked < count
-		ServePair(sexLab, offered[picked], customer, False)
+		ServePair(offered[picked], customer, False)
 	EndIf
 EndFunction
 
@@ -1878,7 +1932,7 @@ EndFunction
 Function OwnerRound()
 	Actor owner = brothelOwner
 	If !brothelCell || !owner || Game.GetPlayer().GetParentCell() != brothelCell || owner.GetParentCell() != brothelCell \
-			|| owner.IsDead() || owner.IsInCombat() || IsInDeal(owner) || SexLabUtil.GetAPI().IsActorActive(owner) || talking \
+			|| owner.IsDead() || owner.IsInCombat() || IsInDeal(owner) || InScene(owner) || talking \
 			|| Utility.IsInMenuMode()
 		Return
 	EndIf
@@ -1905,13 +1959,12 @@ Float Property OwnerRepeatSeconds = 180.0 AutoReadOnly
 Function OwnerWhileBusy()
 	Actor owner = brothelOwner
 	Actor player = Game.GetPlayer()
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
 	String o = owner.GetDisplayName()
 	String busy = ""
 	Int i = 0
 	While i <= workerCount
 		Actor worker = StaffAt(i)
-		If worker && worker != owner && worker.GetParentCell() == brothelCell && (IsInDeal(worker) || sexLab.IsActorActive(worker))
+		If worker && worker != owner && worker.GetParentCell() == brothelCell && (IsInDeal(worker) || InScene(worker))
 			If busy != ""
 				busy += ", "
 			EndIf
@@ -1919,7 +1972,7 @@ Function OwnerWhileBusy()
 		EndIf
 		i += 1
 	EndWhile
-	Actor waiting = WaitingCustomerNear(sexLab, owner)
+	Actor waiting = WaitingCustomerNear(owner)
 	If waiting && waiting == ownerKeptWaiting && Utility.GetCurrentRealTime() - ownerKeptWaitingAt < OwnerRepeatSeconds
 		Return
 	EndIf
@@ -1935,7 +1988,7 @@ Function OwnerWhileBusy()
 		If GetModSettingBool("bDebugLog:General")
 			DebugLog("Owner " + o + " keeps " + waiting.GetDisplayName() + " waiting")
 		EndIf
-	ElseIf !IsInDeal(player) && !sexLab.IsActorActive(player) && owner.GetDistance(player) <= OwnerTalkDistance
+	ElseIf !IsInDeal(player) && !InScene(player) && owner.GetDistance(player) <= OwnerTalkDistance
 		String report = BusinessReport()
 		If report == ownerLastReport
 			Return
@@ -1951,7 +2004,7 @@ EndFunction
 
 ; The free customer (the brothel's own, or a visitor from town) nearest to the owner, within
 ; OwnerTalkDistance; None when there is none.
-Actor Function WaitingCustomerNear(SexLabFramework sexLab, Actor owner)
+Actor Function WaitingCustomerNear(Actor owner)
 	Actor nearest = None
 	Float nearestDistance = 0.0
 	Int i = 0
@@ -1963,7 +2016,7 @@ Actor Function WaitingCustomerNear(SexLabFramework sexLab, Actor owner)
 			candidate = visitors[i - customers.Length]
 		EndIf
 		If candidate && candidate != owner && workers.Find(candidate) < 0 && !candidate.IsDead() && !candidate.IsDisabled() && candidate.Is3DLoaded() \
-				&& candidate.GetParentCell() == brothelCell && !IsInDeal(candidate) && !sexLab.IsActorActive(candidate)
+				&& candidate.GetParentCell() == brothelCell && !IsInDeal(candidate) && !InScene(candidate)
 			Float distance = owner.GetDistance(candidate)
 			If distance <= OwnerTalkDistance && (!nearest || distance < nearestDistance)
 				nearest = candidate
@@ -2011,13 +2064,12 @@ Bool Function OwnerRecommends()
 	If WorkerDealCount() >= MaxConcurrent()
 		Return False
 	EndIf
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
 	Actor owner = brothelOwner
-	Actor worker = PickWorker(sexLab, PlayerInAutoServe())
+	Actor worker = PickWorker(PlayerInAutoServe())
 	If !worker || worker == owner
 		Return False
 	EndIf
-	Actor customer = PickCustomer(sexLab, worker)
+	Actor customer = PickCustomer(worker)
 	If !customer || owner.GetDistance(customer) > OwnerTalkDistance
 		Return False
 	EndIf
@@ -2028,7 +2080,7 @@ Bool Function OwnerRecommends()
 	If GetModSettingBool("bDebugLog:General")
 		DebugLog("Owner " + o + " recommends " + worker.GetDisplayName() + " to " + customer.GetDisplayName())
 	EndIf
-	ServePair(sexLab, worker, customer, True)
+	ServePair(worker, customer, True)
 	Return True
 EndFunction
 
@@ -2036,7 +2088,6 @@ EndFunction
 ; customer is taken to task if that is over SlowHours; otherwise the one who earned most is praised.
 Bool Function OwnerTalksToWorker()
 	Actor owner = brothelOwner
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
 	Float now = Utility.GetCurrentGameTime()
 	Actor slowest = None
 	Float slowestHours = -1.0
@@ -2046,7 +2097,7 @@ Bool Function OwnerTalksToWorker()
 	While i <= workerCount
 		Actor worker = StaffAt(i)
 		If worker && worker != owner && !worker.IsDead() && worker.GetParentCell() == brothelCell && !IsInDeal(worker) \
-				&& !sexLab.IsActorActive(worker) && owner.GetDistance(worker) <= OwnerTalkDistance
+				&& !InScene(worker) && owner.GetDistance(worker) <= OwnerTalkDistance
 			Float last = StorageUtil.GetFloatValue(worker, "SNB_LastServed", -1.0)
 			Float hours = 1000.0
 			If last >= 0.0
@@ -2516,6 +2567,7 @@ Function ResetDeals()
 	dealCustomers = new Actor[13]
 	dealStates = new Int[13]
 	dealThreads = new Int[13]
+	dealOStim = new Bool[13]
 	dealSerials = new Int[13]
 	dealStarted = new Float[13]
 	dealIdleRuns = new Int[13]
@@ -2626,6 +2678,7 @@ Function ReleaseDeal(Int slot)
 	dealWorkers[slot] = None
 	dealCustomers[slot] = None
 	dealThreads[slot] = -1
+	dealOStim[slot] = False
 	dealBeds[slot] = None
 	dealCenters[slot] = None
 	DeleteSpot(slot)
@@ -2639,7 +2692,7 @@ Function DismissIfOverCount(Actor customer)
 		Return
 	EndIf
 	Int index = customers.Find(customer)
-	If index < 0 || IsInDeal(customer) || SexLabUtil.GetAPI().IsActorActive(customer)
+	If index < 0 || IsInDeal(customer) || InScene(customer)
 		Return
 	EndIf
 	Bool woman = IsWoman(customer)
@@ -2676,7 +2729,9 @@ Function MarkCustomerSpot(Int slot)
 EndFunction
 
 ; Held by the pair picking a bed (see StartBrothelScene); a pick that never let go (a thread cut off
-; by a load) is taken over after BedPickTimeoutSeconds.
+; by a load) is taken over after BedPickTimeoutSeconds. PickBed renews the time at every bed it
+; looks at: in a brothel with many beds a busy Papyrus took over 15 seconds for one search, the next
+; pair took the lock as stale, and two pairs picked the same bed.
 Bool pickingBed
 Float pickingBedSince
 Float Property BedPickTimeoutSeconds = 15.0 AutoReadOnly
@@ -2699,7 +2754,7 @@ EndFunction
 ; over a single one), a single bed before a bedroll, and the nearest of the kind. The furniture in
 ; range is scanned directly: SexLab's FindBeds left out the Bannered Mare's rented beds, and its
 ; FindBed with IgnoreUsed returns beds in use.
-ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] positions)
+ObjectReference Function PickBed(Actor worker, Actor[] positions, Bool ostim)
 	ObjectReference[] found = PO3_SKSEFunctions.FindAllReferencesOfFormType(worker, FormTypeFurniture, BedSearchRadius)
 	Bool logging = GetModSettingBool("bDebugLog:General")
 	If logging
@@ -2711,31 +2766,32 @@ ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] p
 	; With no furniture P+ offers every scene; on furniture it knows, only that furniture's. 1.6x
 	; takes only the beds in its own list, which BedTypeOf already keeps to, so it needs no check.
 	Int anywhereCount = 0
-	If !legacySexLab
-		anywhereCount = skyrimnet_BrothelSLP.SceneCount(sexLab, positions, "", 1, None)
+	If !legacySexLab && !ostim
+		anywhereCount = skyrimnet_BrothelSLP.SceneCount(sexLabApi, positions, "", 1, None)
 	EndIf
 	Int i = 0
 	While i < found.Length
+		pickingBedSince = Utility.GetCurrentRealTime() ; still picking: see LockBedPick
 		ObjectReference candidate = found[i]
-		Int bedType = BedTypeOf(sexLab, candidate)
+		Int bedType = BedTypeOf(candidate, ostim)
 		If bedType > 0
 			Float distance = worker.GetDistance(candidate)
 			Float dz = candidate.GetPositionZ() - worker.GetPositionZ()
 			Bool usable = !candidate.IsDisabled() && candidate.GetParentCell() == brothelCell && Math.abs(dz) <= BedSearchRadiusZ \
-				&& dealBeds.Find(candidate) < 0 && sexLab.IsBedAvailable(candidate) && !BedOccupied(candidate, positions)
+				&& dealBeds.Find(candidate) < 0 && BedAvailable(candidate, ostim) && !BedOccupied(candidate, positions)
 			If logging
 				DebugLog("  " + candidate.GetDisplayName() + " [" + candidate.GetFormID() + "] " \
 					+ PO3_SKSEFunctions.GetFormEditorID(candidate.GetBaseObject()) + " type=" + bedType \
-					+ " sexLabBed=" + IsSexLabBed(sexLab, candidate) \
+					+ " sexLabBed=" + IsSexLabBed(candidate, ostim) \
 					+ " dist=" + (distance as Int) + " dz=" + (dz as Int) \
 					+ " sameCell=" + (candidate.GetParentCell() == brothelCell) + " takenByPair=" + (dealBeds.Find(candidate) >= 0) + " occupied=" + BedOccupied(candidate, positions) \
-					+ " available=" + sexLab.IsBedAvailable(candidate) + " usable=" + usable)
+					+ " available=" + BedAvailable(candidate, ostim) + " usable=" + usable)
 			EndIf
 			; SexLab's bed types rank them: 3 double, 2 single, 1 bedroll.
 			Bool better = !bed || bedType > bedTypeChosen || (bedType == bedTypeChosen && distance < bedDistance)
-			If usable && better && !legacySexLab
+			If usable && better && !legacySexLab && !ostim
 				; Only a candidate that would be chosen is checked, as the lookup takes a moment.
-				Int onBedCount = skyrimnet_BrothelSLP.SceneCount(sexLab, positions, "", 2, candidate)
+				Int onBedCount = skyrimnet_BrothelSLP.SceneCount(sexLabApi, positions, "", 2, candidate)
 				If onBedCount == 0 || onBedCount >= anywhereCount
 					usable = False
 				EndIf
@@ -2751,6 +2807,10 @@ ObjectReference Function PickBed(SexLabFramework sexLab, Actor worker, Actor[] p
 		EndIf
 		i += 1
 	EndWhile
+	If bed
+		sampleBed = bed
+		sampleBedCell = brothelCell
+	EndIf
 	If logging
 		If bed
 			DebugLog("  -> chose " + bed.GetDisplayName() + " [" + bed.GetFormID() + "]")
@@ -2765,12 +2825,15 @@ EndFunction
 ; whose editor ID names one counts as a single bed. Whether SexLab really plays bed animations on it
 ; is checked separately in PickBed: on furniture it does not know (CommonBed01L, for one) it picks
 ; standing animations, plays them at the furniture's origin, and the bed pushes the pair apart.
-; Under 1.6x, which has no such check, only the beds in SexLab's own list count.
-Int Function BedTypeOf(SexLabFramework sexLab, ObjectReference ref)
-	If legacySexLab
-		Return skyrimnet_BrothelSL16.BedType(sexLab, ref)
+; Under 1.6x, which has no such check, only the beds in SexLab's own list count, and under OStim only
+; the furniture it classes as a bed.
+Int Function BedTypeOf(ObjectReference ref, Bool ostim)
+	If ostim
+		Return skyrimnet_BrothelOS.BedType(ref)
+	ElseIf legacySexLab
+		Return skyrimnet_BrothelSL16.BedType(sexLabApi, ref)
 	EndIf
-	Int bedType = skyrimnet_BrothelSLP.BedType(sexLab, ref)
+	Int bedType = skyrimnet_BrothelSLP.BedType(sexLabApi, ref)
 	If bedType > 0
 		Return bedType
 	EndIf
@@ -2806,20 +2869,24 @@ EndFunction
 ; pair (or the player) can take the next one. Two runs, so an end hook still on its way pays first.
 Function ClearStalledDeals()
 	Float now = Utility.GetCurrentRealTime()
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
 	Int i = 0
 	While i < DealSlots
 		If dealStates[i] == DealInScene && now - dealStarted[i] > SceneTimeoutSeconds
 			ReleaseDeal(i)
-		ElseIf dealStates[i] == DealInScene && sexLab && !sexLab.IsActorActive(dealWorkers[i]) && !sexLab.IsActorActive(dealCustomers[i])
+		ElseIf dealStates[i] == DealInScene && HasFramework() && IdleDeal(i)
 			dealIdleRuns[i] = dealIdleRuns[i] + 1
 			If dealIdleRuns[i] >= 2
-				If GetModSettingBool("bDebugLog:General")
-					DebugLog("Scene for " + dealWorkers[i].GetDisplayName() + " and " + dealCustomers[i].GetDisplayName() \
-						+ " stopped without an end hook; deal cleared")
-				EndIf
+				; Each call below can let another thread in too: only the pair IdleDeal saw is cleared.
+				Actor idleWorker = dealWorkers[i]
+				Actor idleCustomer = dealCustomers[i]
 				StepOffBed(i)
-				ReleaseDeal(i)
+				If dealStates[i] == DealInScene && dealWorkers[i] == idleWorker && dealCustomers[i] == idleCustomer
+					ReleaseDeal(i)
+					If GetModSettingBool("bDebugLog:General")
+						DebugLog("Scene for " + idleWorker.GetDisplayName() + " and " + idleCustomer.GetDisplayName() \
+							+ " stopped without an end hook; deal cleared")
+					EndIf
+				EndIf
 			EndIf
 		ElseIf dealStates[i] == DealInScene
 			dealIdleRuns[i] = 0
@@ -2828,6 +2895,22 @@ Function ClearStalledDeals()
 		EndIf
 		i += 1
 	EndWhile
+EndFunction
+
+; Whether neither of the pair in this slot's scene is in a scene of the framework any more. The
+; look calls into another script, which lets other threads in: the scene's end could release the
+; deal meanwhile, and another pair could take the slot. The pair is noted first, and the answer is
+; True only when the same pair is still in the slot, in its scene, afterwards.
+Bool Function IdleDeal(Int slot)
+	Actor worker = dealWorkers[slot]
+	Actor customer = dealCustomers[slot]
+	Int threadID = dealThreads[slot]
+	Bool ostim = dealOStim[slot]
+	If !worker || !customer || InSceneOf(ostim, worker) || InSceneOf(ostim, customer)
+		Return False
+	EndIf
+	Return dealStates[slot] == DealInScene && dealWorkers[slot] == worker && dealCustomers[slot] == customer \
+		&& dealThreads[slot] == threadID
 EndFunction
 
 ; ---------------------------------------------------------------------------------------------
@@ -2848,28 +2931,27 @@ Function ServeCustomer(Bool quiet)
 		Notify("$SNB_Busy", quiet)
 		Return
 	EndIf
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
-	Actor worker = PickWorker(sexLab, PlayerInAutoServe())
+	Actor worker = PickWorker(PlayerInAutoServe())
 	If !worker
 		Notify("$SNB_NoWorker", quiet)
 		If !quiet && GetModSettingBool("bDebugLog:General")
-			LogWorkersNotFree(sexLab)
+			LogWorkersNotFree()
 		EndIf
 		Return
 	EndIf
-	Actor customer = PickCustomer(sexLab, worker)
+	Actor customer = PickCustomer(worker)
 	If !customer
 		Notify("$SNB_NoCustomer", quiet)
 		Return
 	EndIf
-	ServePair(sexLab, worker, customer, quiet)
+	ServePair(worker, customer, quiet)
 EndFunction
 
 ; The customer walks over to this worker and makes his offer: ServeCustomer's pick, or the pair the
 ; owner put together. With the player as the worker, the player answers (ServePlayerWith).
-Function ServePair(SexLabFramework sexLab, Actor worker, Actor customer, Bool quiet)
+Function ServePair(Actor worker, Actor customer, Bool quiet)
 	If worker == Game.GetPlayer()
-		ServePlayerWith(sexLab, customer)
+		ServePlayerWith(customer)
 		Return
 	EndIf
 	Int slot = ReserveDeal(worker, customer)
@@ -2938,7 +3020,7 @@ Function ServePair(SexLabFramework sexLab, Actor worker, Actor customer, Bool qu
 	ReleaseTalk()
 	Utility.Wait(1.5)
 	If DealAlive(slot, serial)
-		StartBrothelScene(sexLab, slot)
+		StartBrothelScene(slot)
 	EndIf
 EndFunction
 
@@ -2956,26 +3038,25 @@ Function ServePlayer()
 		Debug.Notification("$SNB_NotInBrothel")
 		Return
 	EndIf
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
-	If IsInDeal(player) || sexLab.IsActorActive(player)
-		PlayerTrace("stopped: already in a deal (" + IsInDeal(player) + ") or a SexLab scene (" + sexLab.IsActorActive(player) + ")")
+	If IsInDeal(player) || InScene(player)
+		PlayerTrace("stopped: already in a deal (" + IsInDeal(player) + ") or a SexLab scene (" + InScene(player) + ")")
 		Debug.Notification("$SNB_PlayerBusy")
 		Return
 	EndIf
-	Actor customer = PickCustomer(sexLab, player)
+	Actor customer = PickCustomer(player)
 	If !customer
 		PlayerTrace("stopped: no free customer")
 		Debug.Notification("$SNB_NoCustomer")
 		Return
 	EndIf
-	ServePlayerWith(sexLab, customer)
+	ServePlayerWith(customer)
 EndFunction
 
 ; The customer walks up to the player and makes his offer: from the player's own hotkey, automatic
 ; serving with the player included, or an NPC owner's recommendation.
-Function ServePlayerWith(SexLabFramework sexLab, Actor customer)
+Function ServePlayerWith(Actor customer)
 	Actor player = Game.GetPlayer()
-	If IsInDeal(player) || sexLab.IsActorActive(player)
+	If IsInDeal(player) || InScene(player)
 		Debug.Notification("$SNB_PlayerBusy")
 		Return
 	EndIf
@@ -3002,7 +3083,7 @@ Function ServePlayerWith(SexLabFramework sexLab, Actor customer)
 		Return
 	EndIf
 	PlayerTrace("timing: talk turn t=" + Utility.GetCurrentRealTime())
-	If ChoicesReady() && ServePlayerWithChoices(sexLab, slot, serial)
+	If ChoicesReady() && ServePlayerWithChoices(slot, serial)
 		Return
 	EndIf
 	Float offeredAt = Utility.GetCurrentRealTime()
@@ -3034,7 +3115,7 @@ Function ServePlayerWith(SexLabFramework sexLab, Actor customer)
 	PayForDeal(slot)
 	Utility.Wait(1.0)
 	If DealAlive(slot, serial)
-		StartBrothelScene(sexLab, slot)
+		StartBrothelScene(slot)
 	Else
 		PlayerTrace("stopped: the deal was cleared after accepting")
 	EndIf
@@ -3146,7 +3227,7 @@ EndFunction
 
 ; ServePlayer's answer and scene through the choices menu. False when it could not take the offer
 ; at all, so the message box takes over; True when the deal has been dealt with here.
-Bool Function ServePlayerWithChoices(SexLabFramework sexLab, Int slot, Int serial)
+Bool Function ServePlayerWithChoices(Int slot, Int serial)
 	Actor player = Game.GetPlayer()
 	Actor customer = dealCustomers[slot]
 	Int payment = GetModSettingInt("iPayment:General")
@@ -3188,7 +3269,7 @@ Bool Function ServePlayerWithChoices(SexLabFramework sexLab, Int slot, Int seria
 	dealStates[slot] = DealAccepted
 	PayForDeal(slot)
 
-	String positionTag = AskPosition(sexLab, slot, answer == 1, reactionOwed)
+	String positionTag = AskPosition(slot, answer == 1, reactionOwed)
 	If reactionOwed && !positionAsked
 		; No position question after all (no tag has a scene, or the choices menu was busy): the
 		; customer still answers the acceptance.
@@ -3210,12 +3291,60 @@ Bool Function ServePlayerWithChoices(SexLabFramework sexLab, Int slot, Int seria
 	Utility.Wait(1.0)
 	If DealAlive(slot, serial)
 		PlayerTrace("timing: scene start t=" + Utility.GetCurrentRealTime())
-		StartBrothelScene(sexLab, slot, positionTag)
+		StartBrothelScene(slot, positionTag)
 	Else
 		PlayerTrace("stopped: the deal was cleared after accepting")
 	EndIf
 	ReleaseTalkAfterChoices()
 	Return True
+EndFunction
+
+; A bed of the current brothel, for telling which positions have bed scenes: the last one a pair
+; was given here, else the first the framework classes as a single or double bed in range of the
+; player (looked for once per brothel). None when there is none.
+ObjectReference sampleBed
+Cell sampleBedCell
+
+ObjectReference Function SampleBed()
+	If sampleBed && sampleBedCell == brothelCell && sampleBed.GetParentCell() == brothelCell
+		Return sampleBed
+	EndIf
+	sampleBed = None
+	sampleBedCell = brothelCell
+	Actor player = Game.GetPlayer()
+	If !brothelCell || player.GetParentCell() != brothelCell
+		Return None
+	EndIf
+	ObjectReference[] found = PO3_SKSEFunctions.FindAllReferencesOfFormType(player, FormTypeFurniture, BedSearchRadius)
+	Int i = 0
+	While i < found.Length && !sampleBed
+		If found[i].GetParentCell() == brothelCell && BedTypeOf(found[i], useOStim) >= 2
+			sampleBed = found[i]
+		EndIf
+		i += 1
+	EndWhile
+	Return sampleBed
+EndFunction
+
+; Fills offered and intents with up to MaxPositionChoices positions.json tags that have a scene for
+; the pair, on bed (None: anywhere), from the random start; returns how many.
+Int Function OfferPositions(Actor[] positions, ObjectReference bed, Int start, Int tagCount, String[] offered, String[] intents)
+	Int count = 0
+	Int i = 0
+	While i < tagCount && count < MaxPositionChoices
+		Int index = (start + i) % tagCount
+		String tag = JsonUtil.StringListGet(PositionsFile, "tags", index)
+		If tag != "" && HasScenesFor(positions, tag) && (!bed || HasScenes(positions, tag, 2, bed, useOStim))
+			offered[count] = tag
+			intents[count] = JsonUtil.StringListGet(PositionsFile, "labels", index)
+			If intents[count] == ""
+				intents[count] = "ask for " + tag
+			EndIf
+			count += 1
+		EndIf
+		i += 1
+	EndWhile
+	Return count
 EndFunction
 
 ; The customer asks which position the player wants. Offers up to MaxPositionChoices of the
@@ -3228,7 +3357,7 @@ Bool positionAsked
 ; reaction: what to say instead when the customer has not yet answered the player's own offer: he
 ; says yes and asks in one line (reactFirst is then ignored). When the player is the customer
 ; (buying a worker), the worker asks instead; "customer" below is then that worker.
-String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant, Bool reactFirst = False, String reaction = "")
+String Function AskPosition(Int slot, Bool reluctant, Bool reactFirst = False, String reaction = "")
 	Actor player = Game.GetPlayer()
 	Actor customer = dealCustomers[slot]
 	If customer == player
@@ -3244,22 +3373,24 @@ String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant, Bo
 	EndIf
 	String[] offered = Utility.CreateStringArray(MaxPositionChoices)
 	String[] intents = Utility.CreateStringArray(MaxPositionChoices + 1)
-	Int count = 0
 	Int start = Utility.RandomInt(0, tagCount - 1)
-	Int i = 0
-	While i < tagCount && count < MaxPositionChoices
-		Int index = (start + i) % tagCount
-		String tag = JsonUtil.StringListGet(PositionsFile, "tags", index)
-		If tag != "" && HasScenesFor(sexLab, positions, tag)
-			offered[count] = tag
-			intents[count] = JsonUtil.StringListGet(PositionsFile, "labels", index)
-			If intents[count] == ""
-				intents[count] = "ask for " + tag
-			EndIf
-			count += 1
+	; With bed mode "always" the scene goes to a bed, and a position the bed has no scene for is
+	; played off it (see StartBrothelScene): the positions a bed of this brothel has scenes for are
+	; offered first, and all of them only when none has.
+	Int count = 0
+	ObjectReference bed = None
+	If GetModSettingInt("iBedMode:General") == 1
+		bed = SampleBed()
+	EndIf
+	If bed
+		count = OfferPositions(positions, bed, start, tagCount, offered, intents)
+		If GetModSettingBool("bDebugLog:General")
+			DebugLog("Positions with a scene on " + bed.GetDisplayName() + " [" + bed.GetFormID() + "]: " + count)
 		EndIf
-		i += 1
-	EndWhile
+	EndIf
+	If count == 0
+		count = OfferPositions(positions, None, start, tagCount, offered, intents)
+	EndIf
 	If count == 0
 		Return ""
 	EndIf
@@ -3296,40 +3427,58 @@ String Function AskPosition(SexLabFramework sexLab, Int slot, Bool reluctant, Bo
 EndFunction
 
 ; ---------------------------------------------------------------------------------------------
-; SexLab P+ or 1.6x: each of these goes to the script for the SexLab installed (see DetectSexLab)
+; SexLab P+, 1.6x or OStim: each of these goes to the script for the framework in use (see
+; DetectFramework)
 ; ---------------------------------------------------------------------------------------------
 
-; Whether SexLab has a scene with this tag for the pair, with one sex per position for a man and a
-; woman, anywhere.
-Bool Function HasScenesFor(SexLabFramework sexLab, Actor[] positions, String tag)
-	If legacySexLab
-		Return skyrimnet_BrothelSL16.HasScenesFor(sexLab, positions, tag)
+; Whether the framework has a scene with this tag for the pair, anywhere (SexLab: with one sex per
+; position for a man and a woman; OStim: through positions.json's OStim columns).
+Bool Function HasScenesFor(Actor[] positions, String tag)
+	If useOStim
+		Return skyrimnet_BrothelOS.HasScenesFor(positions, tag, PositionsFile)
+	ElseIf !sexLabApi
+		Return False
+	ElseIf legacySexLab
+		Return skyrimnet_BrothelSL16.HasScenesFor(sexLabApi, positions, tag)
 	EndIf
-	Return skyrimnet_BrothelSLP.HasScenesFor(sexLab, positions, tag)
+	Return skyrimnet_BrothelSLP.HasScenesFor(sexLabApi, positions, tag)
 EndFunction
 
-; Whether SexLab has a scene with this tag for the pair at center with this furniture preference.
-Bool Function HasScenes(SexLabFramework sexLab, Actor[] positions, String tag, Int furniturePref, ObjectReference center)
-	If legacySexLab
-		Return skyrimnet_BrothelSL16.HasScenes(sexLab, positions, tag, furniturePref, center)
+; Whether the framework has a scene with this tag for the pair at center with this furniture
+; preference.
+Bool Function HasScenes(Actor[] positions, String tag, Int furniturePref, ObjectReference center, Bool ostim)
+	If ostim
+		Return skyrimnet_BrothelOS.HasScenes(positions, tag, center, PositionsFile)
+	ElseIf !sexLabApi
+		Return False
+	ElseIf legacySexLab
+		Return skyrimnet_BrothelSL16.HasScenes(sexLabApi, positions, tag, furniturePref, center)
 	EndIf
-	Return skyrimnet_BrothelSLP.HasScenes(sexLab, positions, tag, furniturePref, center)
+	Return skyrimnet_BrothelSLP.HasScenes(sexLabApi, positions, tag, furniturePref, center)
 EndFunction
 
-Bool Function IsSexLabBed(SexLabFramework sexLab, ObjectReference ref)
-	If legacySexLab
-		Return skyrimnet_BrothelSL16.IsSexLabBed(sexLab, ref)
+Bool Function IsSexLabBed(ObjectReference ref, Bool ostim)
+	If ostim
+		Return skyrimnet_BrothelOS.BedType(ref) > 0
+	ElseIf !sexLabApi
+		Return False
+	ElseIf legacySexLab
+		Return skyrimnet_BrothelSL16.IsSexLabBed(sexLabApi, ref)
 	EndIf
-	Return skyrimnet_BrothelSLP.IsSexLabBed(sexLab, ref)
+	Return skyrimnet_BrothelSLP.IsSexLabBed(sexLabApi, ref)
 EndFunction
 
 ; Starts one scene for the pair, a fresh random pick of scenes each call, the tag's if it has any.
-; Returns the SexLab thread's ID, or -1 when SexLab refuses.
-Int Function StartSceneOnce(SexLabFramework sexLab, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag)
-	If legacySexLab
-		Return skyrimnet_BrothelSL16.StartScene(sexLab, positions, center, furniturePref, positionTag, SceneHook)
+; Returns the thread's ID, or -1 when the framework refuses (or none is installed).
+Int Function StartSceneOnce(Actor[] positions, ObjectReference center, Int furniturePref, String positionTag, Bool ostim)
+	If ostim
+		Return skyrimnet_BrothelOS.StartScene(positions, center, furniturePref, positionTag, PositionsFile)
+	ElseIf !sexLabApi
+		Return -1
+	ElseIf legacySexLab
+		Return skyrimnet_BrothelSL16.StartScene(sexLabApi, positions, center, furniturePref, positionTag, SceneHook)
 	EndIf
-	Return skyrimnet_BrothelSLP.StartScene(sexLab, positions, center, furniturePref, positionTag, SceneHook)
+	Return skyrimnet_BrothelSLP.StartScene(sexLabApi, positions, center, furniturePref, positionTag, SceneHook)
 EndFunction
 
 ; The customer's own reaction to the player's answer, when the choices menu left it to the brothel.
@@ -3409,7 +3558,10 @@ EndFunction
 ; SexLab pick bed animations. With no free bed (or bed mode "follow SexLab") the scene starts where
 ; the worker stands, unless another pair is already there: then at the spot the customer came from.
 ; positionTag: a SexLab tag the player picked (Player Choices); "" for any scene.
-Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag = "")
+Function StartBrothelScene(Int slot, String positionTag = "")
+	; The framework is fixed here: an MCM switch while this runs leaves this scene in it.
+	Bool ostim = useOStim
+	dealOStim[slot] = ostim
 	Actor worker = dealWorkers[slot]
 	Actor[] positions = new Actor[2]
 	positions[0] = worker
@@ -3421,9 +3573,12 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag 
 		; dealBeds: two pairs picking at once chose the same bed, and SexLab put the second pair on
 		; it too (one of them floating above the bed). One pair picks and claims at a time.
 		LockBedPick()
-		center = PickBed(sexLab, worker, positions)
+		center = PickBed(worker, positions, ostim)
 		; A picked position the bed has no scene for (standing, say) is played off the bed.
-		If center && positionTag != "" && !HasScenes(sexLab, positions, positionTag, 2, center)
+		If center && positionTag != "" && !HasScenes(positions, positionTag, 2, center, ostim)
+			If GetModSettingBool("bDebugLog:General")
+				DebugLog("  no " + positionTag + " scene on " + center.GetDisplayName() + " [" + center.GetFormID() + "]: played off the bed")
+			EndIf
 			center = None
 		EndIf
 		dealBeds[slot] = center
@@ -3464,15 +3619,15 @@ Function StartBrothelScene(SexLabFramework sexLab, Int slot, String positionTag 
 	Int attempt = 0
 	Bool playing = False
 	While attempt < SceneAttempts && !playing
-		threadID = StartSceneOnce(sexLab, positions, center, furniturePref, positionTag)
+		threadID = StartSceneOnce(positions, center, furniturePref, positionTag, ostim)
 		If threadID >= 0
-			playing = StillPlaying(sexLab, positions)
+			playing = StillPlaying(positions, ostim)
 			If !playing
-				EndAbandonedThread(sexLab, threadID)
+				EndAbandonedThread(threadID, ostim)
 			EndIf
 		EndIf
 		If GetModSettingBool("bDebugLog:General")
-			DebugLog("Scene (SexLab " + SexLabName() + ") for " + worker.GetDisplayName() + " and " + positions[1].GetDisplayName() \
+			DebugLog("Scene (" + FrameworkName(ostim) + ") for " + worker.GetDisplayName() + " and " + positions[1].GetDisplayName() \
 				+ ", try " + (attempt + 1) + ": started=" + (threadID >= 0) + " playing=" + playing)
 		EndIf
 		If threadID < 0
@@ -3507,20 +3662,15 @@ EndFunction
 ; starts the player's scene while the customer is still answering, and by the time he was done the
 ; player could move again: Space jumped out of the animation, the partner kept playing it. So the
 ; hold is put back once the scene is confirmed and again once the customer has finished speaking,
-; through SexLab's own UpdateAnimatingActorMovement, so its end lets go as usual. P+ only.
+; through SexLab's own UpdateAnimatingActorMovement, so its end lets go as usual. P+ only: OStim
+; keeps the player's controls itself.
 Function RelockPlayer(Int slot)
 	Actor player = Game.GetPlayer()
-	If legacySexLab || slot < 0 || dealStates[slot] != DealInScene || dealThreads[slot] < 0 \
+	If slot < 0 || dealOStim[slot] || legacySexLab || !sexLabApi || dealStates[slot] != DealInScene || dealThreads[slot] < 0 \
 			|| (dealWorkers[slot] != player && dealCustomers[slot] != player)
 		Return
 	EndIf
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
-	If !sexLab || !sexLab.IsActorActive(player)
-		Return
-	EndIf
-	sslThreadController thread = sexLab.GetController(dealThreads[slot])
-	If thread && thread.GetState() == "Animating"
-		thread.UpdateAnimatingActorMovement(player)
+	If skyrimnet_BrothelSLP.HoldPlayer(sexLabApi, dealThreads[slot], player)
 		PlayerTrace("scene hold put back on the player")
 	EndIf
 EndFunction
@@ -3547,26 +3697,27 @@ Float Property SceneConfirmSeconds = 3.0 AutoReadOnly
 ; no scene in it: it never sends AnimationEnd, so other mods that follow running scenes (SkyrimNet
 ; SexLab polls each one) keep working on it, and their errors and queued updates pile up until
 ; Papyrus falls behind. Such a thread is ended here: one still animating sends AnimationEnd as a
-; normal end would; one still being set up is reset. An ended or free thread is left alone.
-Function EndAbandonedThread(SexLabFramework sexLab, Int threadID)
-	sslThreadController thread = sexLab.GetController(threadID)
-	If !thread
-		Return
-	EndIf
-	String threadState = thread.GetState()
-	If threadState == "Animating" || threadState == "Making" || threadState == "Making_M" || threadState == "Prepare"
-		thread.EndAnimation(False)
-		If GetModSettingBool("bDebugLog:General")
-			DebugLog("Scene thread " + threadID + " never played (state " + threadState + "): ended")
+; normal end would; one still being set up is reset. An ended or free thread is left alone. Under
+; OStim a thread still running without the pair in it is stopped.
+Function EndAbandonedThread(Int threadID, Bool ostim)
+	String threadState = ""
+	If ostim
+		If skyrimnet_BrothelOS.EndIfStuck(threadID)
+			threadState = "running"
 		EndIf
+	ElseIf sexLabApi
+		threadState = skyrimnet_BrothelSL.EndIfStuck(sexLabApi, threadID)
+	EndIf
+	If threadState != "" && GetModSettingBool("bDebugLog:General")
+		DebugLog("Scene thread " + threadID + " never played (state " + threadState + "): ended")
 	EndIf
 EndFunction
 
-Bool Function StillPlaying(SexLabFramework sexLab, Actor[] positions)
+Bool Function StillPlaying(Actor[] positions, Bool ostim)
 	Utility.Wait(SceneCheckSeconds)
 	Int check = 0
 	While check <= SceneConfirmChecks
-		If !sexLab.IsActorActive(positions[0]) && !sexLab.IsActorActive(positions[1])
+		If !InSceneOf(ostim, positions[0]) && !InSceneOf(ostim, positions[1])
 			Return False
 		EndIf
 		If check < SceneConfirmChecks
@@ -3854,7 +4005,7 @@ EndFunction
 ; A free worker in the brothel, at random; withPlayer: the player too, when the player works.
 ; minLevel: only workers of at least this level (the low ones do not invite customers).
 ; Debug log: why each registered worker was passed over when none was free.
-Function LogWorkersNotFree(SexLabFramework sexLab)
+Function LogWorkersNotFree()
 	DebugLog("No free worker (" + workerCount + " registered, " + WorkerDealCount() + " deals open):")
 	Int i = 0
 	While i < workerCount
@@ -3875,7 +4026,7 @@ Function LogWorkersNotFree(SexLabFramework sexLab)
 				EndIf
 				slot += 1
 			EndWhile
-			If why == "free?" && sexLab.IsActorActive(worker)
+			If why == "free?" && InScene(worker)
 				why = "in a SexLab scene"
 			EndIf
 		EndIf
@@ -3888,7 +4039,7 @@ Function LogWorkersNotFree(SexLabFramework sexLab)
 	EndWhile
 EndFunction
 
-Actor Function PickWorker(SexLabFramework sexLab, Bool withPlayer = False, Int minLevel = 0)
+Actor Function PickWorker(Bool withPlayer = False, Int minLevel = 0)
 	Actor[] present = new Actor[65]
 	Int count = 0
 	Int last = workerCount - 1
@@ -3899,7 +4050,7 @@ Actor Function PickWorker(SexLabFramework sexLab, Bool withPlayer = False, Int m
 	While i <= last
 		Actor candidate = StaffAt(i)
 		If candidate && !candidate.IsDead() && candidate.GetParentCell() == brothelCell \
-				&& !IsInDeal(candidate) && !sexLab.IsActorActive(candidate) && (minLevel <= 1 || WorkerLevel(candidate) >= minLevel)
+				&& !IsInDeal(candidate) && !InScene(candidate) && (minLevel <= 1 || WorkerLevel(candidate) >= minLevel)
 			present[count] = candidate
 			count += 1
 		EndIf
@@ -3913,12 +4064,12 @@ EndFunction
 
 ; The free customer nearest to this worker: one of the brothel's own customers, or, with "Local
 ; customers" on, any other adult NPC in the brothel who is not a registered worker.
-Actor Function PickCustomer(SexLabFramework sexLab, Actor worker)
+Actor Function PickCustomer(Actor worker)
 	Actor[] present = new Actor[128]
 	Int count = 0
 	Int i = 0
 	While i < customers.Length
-		If IsFreeCustomer(sexLab, customers[i], worker)
+		If IsFreeCustomer(customers[i], worker)
 			present[count] = customers[i]
 			count += 1
 		EndIf
@@ -3927,7 +4078,7 @@ Actor Function PickCustomer(SexLabFramework sexLab, Actor worker)
 	; Townsfolk who came to the brothel are customers whether or not "Local customers" is on.
 	i = 0
 	While i < MaxVisitors
-		If visitors[i] && visitorStates[i] == VisitorInside && IsFreeCustomer(sexLab, visitors[i], worker)
+		If visitors[i] && visitorStates[i] == VisitorInside && IsFreeCustomer(visitors[i], worker)
 			present[count] = visitors[i]
 			count += 1
 		EndIf
@@ -3944,7 +4095,7 @@ Actor Function PickCustomer(SexLabFramework sexLab, Actor worker)
 			Actor candidate = nearby[i]
 			If candidate != player && customers.Find(candidate) < 0 && workers.Find(candidate) < 0 && visitors.Find(candidate) < 0 \
 					&& !candidate.IsChild() && IsPerson(candidate) && !candidate.IsHostileToActor(player) && (followersToo || !IsFollower(candidate)) \
-					&& IsFreeCustomer(sexLab, candidate, worker)
+					&& IsFreeCustomer(candidate, worker)
 				present[count] = candidate
 				count += 1
 			EndIf
@@ -3977,7 +4128,7 @@ Actor Function PickCustomer(SexLabFramework sexLab, Actor worker)
 EndFunction
 
 ; With "Allow same-sex" off (MCM), a customer must be of the other sex from the worker (or player).
-Bool Function IsFreeCustomer(SexLabFramework sexLab, Actor candidate, Actor worker)
+Bool Function IsFreeCustomer(Actor candidate, Actor worker)
 	; The cell scan also returns NPCs placed there but disabled, or not loaded, until some quest needs
 	; them; SexLab cannot use them.
 	; A registered worker is never a customer, even one who was in the town's pool before she was
@@ -3985,7 +4136,7 @@ Bool Function IsFreeCustomer(SexLabFramework sexLab, Actor candidate, Actor work
 	If !candidate || candidate == worker || candidate == brothelOwner || workers.Find(candidate) >= 0 \
 			|| candidate.IsDisabled() || !candidate.Is3DLoaded() \
 			|| candidate.IsDead() || candidate.IsInCombat() \
-			|| candidate.GetParentCell() != brothelCell || IsInDeal(candidate) || sexLab.IsActorActive(candidate)
+			|| candidate.GetParentCell() != brothelCell || IsInDeal(candidate) || InScene(candidate)
 		Return False
 	EndIf
 	If !GetModSettingBool("bAllowSameSex:General") \
@@ -4549,18 +4700,17 @@ Function WorkerSolicitRound()
 			|| WorkerDealCount() >= MaxConcurrent()
 		Return
 	EndIf
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
-	Actor worker = PickWorker(sexLab, False, SolicitMinLevel)
+	Actor worker = PickWorker(False, SolicitMinLevel)
 	If !worker
 		Return
 	EndIf
-	Actor customer = PickCustomer(sexLab, worker)
+	Actor customer = PickCustomer(worker)
 	If customer
-		WorkerSolicits(sexLab, worker, customer)
+		WorkerSolicits(worker, customer)
 	EndIf
 EndFunction
 
-Function WorkerSolicits(SexLabFramework sexLab, Actor worker, Actor customer)
+Function WorkerSolicits(Actor worker, Actor customer)
 	Int slot = ReserveDeal(worker, customer)
 	If slot < 0
 		Return
@@ -4606,7 +4756,7 @@ Function WorkerSolicits(SexLabFramework sexLab, Actor worker, Actor customer)
 	ReleaseTalk()
 	Utility.Wait(1.5)
 	If DealAlive(slot, serial)
-		StartBrothelScene(sexLab, slot)
+		StartBrothelScene(slot)
 	EndIf
 EndFunction
 
@@ -4645,16 +4795,15 @@ EndFunction
 ; position the player would like, and the scene starts.
 Function PlayerSolicits(Actor customer)
 	Actor player = Game.GetPlayer()
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
 	If !PlayerWorks() || !brothelCell || player.GetParentCell() != brothelCell
 		Debug.Notification("$SNB_NotInBrothel")
 		Return
 	EndIf
-	If IsInDeal(player) || sexLab.IsActorActive(player)
+	If IsInDeal(player) || InScene(player)
 		Debug.Notification("$SNB_PlayerBusy")
 		Return
 	EndIf
-	If !IsFreeCustomer(sexLab, customer, player)
+	If !IsFreeCustomer(customer, player)
 		Debug.Notification("$SNB_NoCustomer")
 		Return
 	EndIf
@@ -4679,13 +4828,14 @@ Function PlayerSolicits(Actor customer)
 	Int picked = 0
 	If ChoicesReady()
 		String[] intents = new String[3]
-		; Two different ways from the worker list in approaches.json, so the replies differ each time.
+		; Two different ways from the worker list in approaches.json, so the replies differ each time. The
+		; ways are written in the third person ("hums a tune"): "you hums" read as someone else speaking.
 		Int styles = JsonUtil.StringListCount(ApproachesFile, "worker")
 		If styles >= 2
 			Int first = Utility.RandomInt(0, styles - 1)
 			Int second = (first + Utility.RandomInt(1, styles - 1)) % styles
-			intents[0] = "offer " + c + " your company tonight for " + payment + " gold; you " + JsonUtil.StringListGet(ApproachesFile, "worker", first)
-			intents[1] = "offer " + c + " your company tonight for " + payment + " gold; you " + JsonUtil.StringListGet(ApproachesFile, "worker", second)
+			intents[0] = "offer " + c + " your company tonight for " + payment + " gold; your way of putting it: like someone who " + JsonUtil.StringListGet(ApproachesFile, "worker", first)
+			intents[1] = "offer " + c + " your company tonight for " + payment + " gold; your way of putting it: like someone who " + JsonUtil.StringListGet(ApproachesFile, "worker", second)
 		Else
 			intents[0] = "offer " + c + " your company tonight for " + payment + " gold, warmly"
 			intents[1] = "offer " + c + " your company tonight for " + payment + " gold, teasingly"
@@ -4742,7 +4892,7 @@ Function PlayerSolicits(Actor customer)
 			+ " came to the brothel tonight for exactly this and accepts, and has not answered yet. In one short line, " + c \
 			+ " says yes and, in the same breath, asks " + p + " what they would like to do tonight."
 	EndIf
-	String positionTag = AskPosition(sexLab, slot, False, False, reaction)
+	String positionTag = AskPosition(slot, False, False, reaction)
 	If reaction != "" && !positionAsked
 		; No position question after all: the customer still says yes.
 		CustomerReacts(customer, p + " has just offered " + c + " a night together for " + payment + " gold" \
@@ -4756,7 +4906,7 @@ Function PlayerSolicits(Actor customer)
 	Utility.Wait(1.0)
 	If DealAlive(slot, serial)
 		PlayerTrace("timing: scene start t=" + Utility.GetCurrentRealTime())
-		StartBrothelScene(sexLab, slot, positionTag)
+		StartBrothelScene(slot, positionTag)
 	EndIf
 	ReleaseTalkAfterChoices()
 EndFunction
@@ -4804,16 +4954,15 @@ EndFunction
 ; and the scene starts on the pick. It follows PlayerSolicits step for step, and is as quick.
 Function PlayerBuys(Actor worker)
 	Actor player = Game.GetPlayer()
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
 	If !BuyingAllowed() || !brothelCell || player.GetParentCell() != brothelCell
 		Debug.Notification("$SNB_NotInBrothel")
 		Return
 	EndIf
-	If IsInDeal(player) || sexLab.IsActorActive(player)
+	If IsInDeal(player) || InScene(player)
 		Debug.Notification("$SNB_PlayerBusy")
 		Return
 	EndIf
-	If !worker || workers.Find(worker) < 0 || worker.IsDead() || IsInDeal(worker) || sexLab.IsActorActive(worker)
+	If !worker || workers.Find(worker) < 0 || worker.IsDead() || IsInDeal(worker) || InScene(worker)
 		Debug.Notification("$SNB_WorkerBusy")
 		Return
 	EndIf
@@ -4846,8 +4995,8 @@ Function PlayerBuys(Actor worker)
 		If styles >= 2
 			Int first = Utility.RandomInt(0, styles - 1)
 			Int second = (first + Utility.RandomInt(1, styles - 1)) % styles
-			intents[0] = "offer " + w + " " + payment + " gold for a night together; the way you put it: " + JsonUtil.StringListGet(ApproachesFile, "customer", first)
-			intents[1] = "offer " + w + " " + payment + " gold for a night together; the way you put it: " + JsonUtil.StringListGet(ApproachesFile, "customer", second)
+			intents[0] = "offer " + w + " " + payment + " gold for a night together; your way of putting it: like someone who " + JsonUtil.StringListGet(ApproachesFile, "customer", first)
+			intents[1] = "offer " + w + " " + payment + " gold for a night together; your way of putting it: like someone who " + JsonUtil.StringListGet(ApproachesFile, "customer", second)
 		Else
 			intents[0] = "offer " + w + " " + payment + " gold for a night together, plainly"
 			intents[1] = "offer " + w + " " + payment + " gold for a night together, with a compliment"
@@ -4886,7 +5035,7 @@ Function PlayerBuys(Actor worker)
 	String reaction = p + " has just offered " + w + " " + payment + " gold for a night together" + said + ". " + w \
 		+ Gendered(" takes the gold and accepts, " + AcceptManner(WorkerLevel(worker)) + ", and has not answered yet. In one short line, ", worker) \
 		+ w + " says yes and, in the same breath, asks " + p + " what they would like to do tonight." + LevelContext(worker)
-	String positionTag = AskPosition(sexLab, slot, False, False, reaction)
+	String positionTag = AskPosition(slot, False, False, reaction)
 	If !positionAsked
 		CustomerReacts(worker, p + " has just paid " + w + " " + payment + " gold for a night together. " + w + " accepts in a few words.")
 	EndIf
@@ -4898,17 +5047,29 @@ Function PlayerBuys(Actor worker)
 	Utility.Wait(1.0)
 	If DealAlive(slot, serial)
 		PlayerTrace("timing: scene start t=" + Utility.GetCurrentRealTime())
-		StartBrothelScene(sexLab, slot, positionTag)
+		StartBrothelScene(slot, positionTag)
 	EndIf
 	ReleaseTalkAfterChoices()
 EndFunction
 
-; The scene ended: the pair's deal is done (it was paid when accepted).
+; SexLab's end hook for the brothel's scenes: the pair's deal is done (it was paid when accepted).
 Event OnBrothelSceneEnd(Int aiThreadID, Bool abHasPlayer)
+	EndDealScene(aiThreadID, False)
+EndEvent
+
+; OStim sends this for every thread that ends, the brothel's and others'; only a thread one of the
+; brothel's OStim deals is in ends a deal.
+Event OnOStimThreadEnd(String eventName, String json, Float threadID, Form sender)
+	EndDealScene(threadID as Int, True)
+EndEvent
+
+; The deal whose scene in this framework ran in this thread is done. Thread IDs are each framework's
+; own (SexLab's and OStim's both start at 0), so the framework is matched too.
+Function EndDealScene(Int threadID, Bool ostim)
 	Int slot = -1
 	Int i = 0
 	While i < DealSlots && slot < 0
-		If dealStates[i] == DealInScene && dealThreads[i] == aiThreadID
+		If dealStates[i] == DealInScene && dealThreads[i] == threadID && dealOStim[i] == ostim
 			slot = i
 		EndIf
 		i += 1
@@ -4921,7 +5082,7 @@ Event OnBrothelSceneEnd(Int aiThreadID, Bool abHasPlayer)
 	StepOffBed(slot)
 	ReleaseDeal(slot)
 	RecordSale(worker, kept)
-EndEvent
+EndFunction
 
 ; SexLab leaves the pair standing where the scene was: on the bed, in the way of the next pair put
 ; on it. Once SexLab has let them go, an NPC still on the bed is moved off it, to where the customer
@@ -4996,9 +5157,9 @@ EndFunction
 
 ; Can this worker stop for a chat: an NPC worker (not the owner) in the brothel, free of deals,
 ; scenes and fights.
-Bool Function FreeToChat(SexLabFramework sexLab, Actor worker)
+Bool Function FreeToChat(Actor worker)
 	Return worker && worker != brothelOwner && !worker.IsDead() && worker.GetParentCell() == brothelCell \
-		&& !IsInDeal(worker) && !sexLab.IsActorActive(worker) && !worker.IsInCombat()
+		&& !IsInDeal(worker) && !InScene(worker) && !worker.IsInCombat()
 EndFunction
 
 Function WorkerChatRound()
@@ -5010,13 +5171,12 @@ Function WorkerChatRound()
 	If topicCount == 0
 		Return
 	EndIf
-	SexLabFramework sexLab = SexLabUtil.GetAPI()
 	; A random free worker, then the free worker nearest her.
 	Actor[] free = new Actor[64]
 	Int count = 0
 	Int i = 0
 	While i < workerCount
-		If FreeToChat(sexLab, workers[i])
+		If FreeToChat(workers[i])
 			free[count] = workers[i]
 			count += 1
 		EndIf

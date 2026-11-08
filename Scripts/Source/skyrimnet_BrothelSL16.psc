@@ -5,35 +5,37 @@ Written against SexLab 1.66b's sources and never tried in game on 1.6x.}
 
 ; SexLab's bed type (1 bedroll, 2 single, 3 double), 0 for furniture not in SexLab's bed list. 1.6x
 ; plays standing animations at the origin of anything else, so only these count as beds.
-Int Function BedType(SexLabFramework sexLab, ObjectReference ref) Global
+Int Function BedType(Quest api, ObjectReference ref) Global
+	SexLabFramework sexLab = api as SexLabFramework
 	Return sexLab.ThreadLib.GetBedType(ref)
 EndFunction
 
-Bool Function IsSexLabBed(SexLabFramework sexLab, ObjectReference ref) Global
-	Return BedType(sexLab, ref) > 0
+Bool Function IsSexLabBed(Quest api, ObjectReference ref) Global
+	Return BedType(api, ref) > 0
 EndFunction
 
 ; Whether SexLab has an animation with this tag ("" for any) for the pair, at center (a bed or not)
 ; with this furniture preference (0 no bed, 1 SexLab decides, 2 the bed at center).
-Bool Function HasScenes(SexLabFramework sexLab, Actor[] positions, String tag, Int furniturePref, ObjectReference center) Global
+Bool Function HasScenes(Quest api, Actor[] positions, String tag, Int furniturePref, ObjectReference center) Global
 	sslBaseAnimation[] found = new sslBaseAnimation[1]
-	Return Collect(sexLab, positions, tag, BedFilter(sexLab, center, furniturePref), found, 1, 0) > 0
+	Return Collect(api, positions, tag, BedFilter(api, center, furniturePref), found, 1, 0) > 0
 EndFunction
 
 ; Whether SexLab has an animation with this tag for the pair, on a bed or off it.
-Bool Function HasScenesFor(SexLabFramework sexLab, Actor[] positions, String tag) Global
-	Return HasScenes(sexLab, positions, tag, 1, None)
+Bool Function HasScenesFor(Quest api, Actor[] positions, String tag) Global
+	Return HasScenes(api, positions, tag, 1, None)
 EndFunction
 
 ; Starts one scene for the pair with up to 10 of its animations (a fresh random pick each call)
 ; with the tag, else with any tag; with none found SexLab picks its own. Returns the thread's ID, or
 ; -1 when SexLab refuses.
-Int Function StartScene(SexLabFramework sexLab, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag, String hook) Global
-	Int bedFilter = BedFilter(sexLab, center, furniturePref)
+Int Function StartScene(Quest api, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag, String hook) Global
+	SexLabFramework sexLab = api as SexLabFramework
+	Int bedFilter = BedFilter(api, center, furniturePref)
 	sslBaseAnimation[] found = new sslBaseAnimation[10]
-	Int count = Collect(sexLab, positions, positionTag, bedFilter, found, 10, 200)
+	Int count = Collect(api, positions, positionTag, bedFilter, found, 10, 200)
 	If count == 0 && positionTag != ""
-		count = Collect(sexLab, positions, "", bedFilter, found, 10, 200)
+		count = Collect(api, positions, "", bedFilter, found, 10, 200)
 	EndIf
 	sslBaseAnimation[] anims = sslUtility.AnimationArray(count)
 	Int i = 0
@@ -46,8 +48,8 @@ EndFunction
 
 ; How the animations are filtered for a bed, as SexLab 1.6x itself does once it has a bed or not:
 ; 1 on the bed at center, 0 off any bed, -1 either (SexLab may still find a bed itself).
-Int Function BedFilter(SexLabFramework sexLab, ObjectReference center, Int furniturePref) Global
-	If center && BedType(sexLab, center) > 0
+Int Function BedFilter(Quest api, ObjectReference center, Int furniturePref) Global
+	If center && BedType(api, center) > 0
 		Return 1
 	ElseIf furniturePref == 0
 		Return 0
@@ -60,7 +62,8 @@ EndFunction
 ; tag, is not aggressive, needs no special furniture, suits the bed filter, and, for a pair of
 ; humans, has as many male and female positions as the pair has men and women: 1.6x positions each
 ; take one sex, so the man never gets the woman's part.
-Int Function Collect(SexLabFramework sexLab, Actor[] positions, String tag, Int bedFilter, sslBaseAnimation[] into, Int limit, Int maxChecks) Global
+Int Function Collect(Quest api, Actor[] positions, String tag, Int bedFilter, sslBaseAnimation[] into, Int limit, Int maxChecks) Global
+	SexLabFramework sexLab = api as SexLabFramework
 	Int males = 0
 	Int females = 0
 	Int i = 0

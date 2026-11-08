@@ -4,26 +4,26 @@ these, and only when P+ is installed: under SexLab 1.6x the types used here do n
 skyrimnet_BrothelSL16 holds the same functions for 1.6x.}
 
 ; SexLab's bed type (1 bedroll, 2 single, 3 double), 0 for furniture SexLab does not class as a bed.
-Int Function BedType(SexLabFramework sexLab, ObjectReference ref) Global
+Int Function BedType(Quest api, ObjectReference ref) Global
 	Return sslThreadLibrary.GetBedTypeImpl(ref)
 EndFunction
 
-Bool Function IsSexLabBed(SexLabFramework sexLab, ObjectReference ref) Global
+Bool Function IsSexLabBed(Quest api, ObjectReference ref) Global
 	Return sslThreadLibrary.IsBed(ref)
 EndFunction
 
 ; How many scenes SexLab offers the pair with this tag ("" for any) and furniture preference.
-Int Function SceneCount(SexLabFramework sexLab, Actor[] positions, String tag, Int furniturePref, ObjectReference center) Global
+Int Function SceneCount(Quest api, Actor[] positions, String tag, Int furniturePref, ObjectReference center) Global
 	Return SexLabRegistry.LookupScenes(positions, tag, None, furniturePref, center).Length
 EndFunction
 
-Bool Function HasScenes(SexLabFramework sexLab, Actor[] positions, String tag, Int furniturePref, ObjectReference center) Global
-	Return SceneCount(sexLab, positions, tag, furniturePref, center) > 0
+Bool Function HasScenes(Quest api, Actor[] positions, String tag, Int furniturePref, ObjectReference center) Global
+	Return SceneCount(api, positions, tag, furniturePref, center) > 0
 EndFunction
 
 ; Whether SexLab has a scene with this tag for the pair, with one sex per position for a man and a
 ; woman (see OneSexPositionScenes), anywhere.
-Bool Function HasScenesFor(SexLabFramework sexLab, Actor[] positions, String tag) Global
+Bool Function HasScenesFor(Quest api, Actor[] positions, String tag) Global
 	If OneSexPositionScenes(positions, None, 1, tag).Length > 0
 		Return True
 	EndIf
@@ -40,7 +40,8 @@ EndFunction
 ; Starts one scene for the pair: one of up to 10 one-sex-position scenes (a fresh random pick each
 ; call), else any scene with the tag, else any scene. Returns the thread's ID, or -1 when SexLab
 ; refuses.
-Int Function StartScene(SexLabFramework sexLab, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag, String hook) Global
+Int Function StartScene(Quest api, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag, String hook) Global
+	SexLabFramework sexLab = api as SexLabFramework
 	String[] scenes = OneSexPositionScenes(positions, center, furniturePref, positionTag)
 	SexLabThread thread
 	If scenes.Length > 0
@@ -91,4 +92,20 @@ String[] Function OneSexPositionScenes(Actor[] positions, ObjectReference center
 		checks -= 1
 	EndWhile
 	Return Utility.ResizeStringArray(picked, count)
+EndFunction
+
+; Puts P+'s hold on the player back (SetActorMovement through the thread's own
+; UpdateAnimatingActorMovement, so its end lets go as usual) while the player is in this animating
+; thread. Returns whether it did.
+Bool Function HoldPlayer(Quest api, Int threadID, Actor player) Global
+	SexLabFramework sexLab = api as SexLabFramework
+	If !sexLab || !sexLab.IsActorActive(player)
+		Return False
+	EndIf
+	sslThreadController thread = sexLab.GetController(threadID)
+	If thread && thread.GetState() == "Animating"
+		thread.UpdateAnimatingActorMovement(player)
+		Return True
+	EndIf
+	Return False
 EndFunction

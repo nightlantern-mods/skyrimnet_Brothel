@@ -149,6 +149,19 @@
 					}
 				},
 				{
+					"id": "iFramework:General",
+					"type": "enum",
+					"text": "$SNB_Framework",
+					"help": "$SNB_FrameworkHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"SexLab",
+							"OStim"
+						]
+					}
+				},
+				{
 					"type": "header",
 					"text": "$SNB_HeaderPayment"
 				},
