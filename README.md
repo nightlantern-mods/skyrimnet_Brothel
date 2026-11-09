@@ -1,4 +1,4 @@
-# SkyrimNet Brothel 0.4.1
+# SkyrimNet Brothel 0.4.2
 
 > **New in 0.4.1: scouting people in debt.** Talk to anyone who owes money and offer them work at
 > your brothel to pay it off. You pick how to put it from AI-written lines (with several brothels,
@@ -388,8 +388,9 @@ The brothel finds it on its own: without it, or with *Scout people in debt* off,
    one you pick is where they will work.
 3. They agree or refuse, by *Chance a debtor accepts*, and say so in their own words.
 4. If they agree, they become a worker and walk to that brothel. Out of your sight they are moved
-   in through its front door, so a far one does not take days. Once there they stay around the
-   brothel's waiting spot.
+   in through its front door, so a far one does not take days. Once there they stay in the
+   brothel and move about it like its hired workers: they sit, eat and sleep in a free bed at
+   night.
 5. After each customer, *Share that pays the debt* of what they kept goes to the debt. The gold
    leaves the worker; if the debt is owed to you, it comes to you. A notification shows what is
    left, and SkyrimNet remembers it.
@@ -516,6 +517,13 @@ How 1.6x differs from P+:
 
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
+
+## What is new in 0.4.2
+
+- **Scouted workers no longer stand at the door.** In 0.4.1 a scouted worker, once at the
+  brothel, stood at the visitors' waiting spot, which is often by the front door, and went back
+  there after every customer. They now move about the brothel like its hired workers. Workers
+  already standing there start moving when you load your save.
 
 ## What is new in 0.4.1
 

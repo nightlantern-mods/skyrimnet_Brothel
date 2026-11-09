@@ -5307,6 +5307,9 @@ Function DetectLedger()
 		RegisterForModEvent("IOULedger_DebtChanged", "OnLedgerDebtChanged")
 	EndIf
 	SyncDebtors()
+	If brothelCells
+		SettleScouts()
+	EndIf
 	If GetModSettingBool("bDebugLog:General")
 		DebugLog("Scouting: IOU Ledger " + ledgerPresent)
 	EndIf
@@ -5676,21 +5679,43 @@ Function StopScoutWalk(Int slot)
 	EndIf
 EndFunction
 
-; In the brothel: the worker stays about its waiting spot instead of going back to their day.
+; In the brothel: the worker stays there instead of going back to their day.
 Function HoldScoutInBrothel(Actor npc, Cell place)
-	ActorUtil.RemovePackageOverride(npc, VisitTravelPackage())
-	ObjectReference marker = BrothelMarkerOf(place)
-	If marker
-		PO3_SKSEFunctions.SetLinkedRef(npc, marker, VisitLink())
-		ActorUtil.AddPackageOverride(npc, VisitWaitPackage(), 60)
-	EndIf
-	npc.EvaluatePackage()
+	SettleScout(npc)
 	If Game.GetPlayer().GetParentCell() == place
 		Debug.Notification(Phrase("scoutArrivedBefore", "") + npc.GetDisplayName() + Phrase("scoutArrivedAfter", " has come to work at the brothel."))
 	EndIf
 	If GetModSettingBool("bDebugLog:General")
 		DebugLog("Scouting: " + npc.GetDisplayName() + " is at " + place.GetName())
 	EndIf
+EndFunction
+
+; Like the brothel's hired workers: moves about the brothel (sits, eats, sleeps in a free bed at
+; night) around where they are, rather than standing at the visitors' waiting spot, which is
+; wherever the player stood on coming in, often by the front door.
+Function SettleScout(Actor npc)
+	ActorUtil.RemovePackageOverride(npc, VisitTravelPackage())
+	ActorUtil.RemovePackageOverride(npc, VisitWaitPackage())
+	PO3_SKSEFunctions.SetLinkedRef(npc, None, VisitLink())
+	ActorUtil.AddPackageOverride(npc, ScoutSandboxPackage(), 60)
+	npc.EvaluatePackage()
+EndFunction
+
+Package Function ScoutSandboxPackage()
+	Return Game.GetFormFromFile(0x0BFB6B, "Skyrim.esm") as Package ; DefaultSandboxCurrentLocation1024, as the hired workers have
+EndFunction
+
+; On every load: scouted workers already in their brothel move about it, also those that 0.4.1
+; left standing at the waiting spot.
+Function SettleScouts()
+	Int i = 0
+	While i < workerCount
+		Actor npc = workers[i]
+		If npc && StorageUtil.GetIntValue(npc, ScoutedKey) > 0 && scoutsWalking.Find(npc) < 0 && brothelCells.Find(npc.GetParentCell()) >= 0
+			SettleScout(npc)
+		EndIf
+		i += 1
+	EndWhile
 EndFunction
 
 ; A scouted worker is no longer a worker: back to their own day.
@@ -5709,6 +5734,7 @@ Function ForgetScout(Actor npc)
 	EndIf
 	ActorUtil.RemovePackageOverride(npc, VisitTravelPackage())
 	ActorUtil.RemovePackageOverride(npc, VisitWaitPackage())
+	ActorUtil.RemovePackageOverride(npc, ScoutSandboxPackage())
 	PO3_SKSEFunctions.SetLinkedRef(npc, None, VisitLink())
 	npc.EvaluatePackage()
 EndFunction
