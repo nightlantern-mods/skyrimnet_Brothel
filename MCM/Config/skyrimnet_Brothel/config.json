@@ -528,6 +528,54 @@
 					"valueOptions": {
 						"sourceType": "ModSettingBool"
 					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderScout"
+				},
+				{
+					"id": "bScoutDebtors:General",
+					"type": "toggle",
+					"text": "$SNB_ScoutDebtors",
+					"help": "$SNB_ScoutDebtorsHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iScoutAccept:General",
+					"type": "slider",
+					"text": "$SNB_ScoutAccept",
+					"help": "$SNB_ScoutAcceptHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 100,
+						"step": 5,
+						"formatString": "{0}%",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iScoutDebtShare:General",
+					"type": "slider",
+					"text": "$SNB_ScoutDebtShare",
+					"help": "$SNB_ScoutDebtShareHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 100,
+						"step": 5,
+						"formatString": "{0}%",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "bScoutQuitWhenPaid:General",
+					"type": "toggle",
+					"text": "$SNB_ScoutQuitWhenPaid",
+					"help": "$SNB_ScoutQuitWhenPaidHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
 				}
 			]
 		},

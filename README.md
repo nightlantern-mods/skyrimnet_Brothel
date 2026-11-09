@@ -1,4 +1,12 @@
-# SkyrimNet Brothel 0.4.0
+# SkyrimNet Brothel 0.4.1
+
+> **New in 0.4.1: scouting people in debt.** Talk to anyone who owes money and offer them work at
+> your brothel to pay it off. You pick how to put it from AI-written lines (with several brothels,
+> which brothel), they agree or refuse, and if they agree they become a worker and make their way
+> there. A share of what they earn from each customer pays the debt until it is gone. This needs
+> **IOU Ledger**, a small debt ledger that comes with [SkyrimNet Slave Auction](https://github.com/nightlantern-mods/skyrimnet_SlaveAuction) **0.2.0**; without it the
+> feature simply stays off. See [Scouting debtors](#scouting-debtors) and
+> [What is new in 0.4.1](#what-is-new-in-041).
 
 > **New in 0.4.0: OStim Standalone support.** The brothel now runs on **OStim Standalone** as well
 > as on SexLab. Install either one: the mod finds out which is there and uses it. With both
@@ -45,6 +53,7 @@ ends scenes SexLab never played (see [What is new in 0.3.1](#what-is-new-in-031)
 | [PapyrusUtil SE](https://www.nexusmods.com/skyrimspecialedition/mods/13048) | Moves the customer with a package override; reads the position, topic and phrase lists. |
 | [powerofthree's Papyrus Extender](https://www.nexusmods.com/skyrimspecialedition/mods/22854) | Links the customer to the worker for that move. |
 | [UIExtensions](https://www.nexusmods.com/skyrimspecialedition/mods/17561) | The list menu of the *Manage Brothel* power (0.2.0). Everything else works without it. |
+| IOU Ledger (`IOULedger.esp`), optional | Scouting people in debt (0.4.1). It comes with [SkyrimNet Slave Auction](https://github.com/nightlantern-mods/skyrimnet_SlaveAuction) 0.2.0. Found on its own when installed; the brothel's plugin does not need it as a master, and without it scouting stays off. |
 
 Any follower framework works (vanilla followers, NFF and others), and workers need not be followers
 at all.
@@ -198,6 +207,11 @@ in the order pressed.
 | Your level / gold to the next level | | Your own level as a worker. |
 | *Buying workers* | | |
 | Buy workers | On | While *You work as one of the workers* is off, *(Buy their company)* is offered when you talk to a worker in the brothel; see *Buying a worker* below. |
+| *Scouting debtors (IOU Ledger)* | | |
+| Scout people in debt | On | Offers *(Offer work at the brothel to pay off the debt)* when you talk to someone who owes money on IOU Ledger; see *Scouting debtors* below. Does nothing without IOU Ledger. |
+| Chance a debtor accepts | 50% | 0 to 100%. Whether someone you scout agrees. They are told the answer before they speak, so their words match it. Separate from *Chance a customer accepts*. |
+| Share that pays the debt | 100% | 0 to 100% of what a scouted worker keeps from each customer that goes to the debt. |
+| Quit once the debt is paid | Off | On: a scouted worker leaves the brothel once the debt is paid off. Off: they keep working. |
 
 **Automatic & town**
 
@@ -361,6 +375,36 @@ brothel and pick *(Buy their company)*:
 The gold counts toward the worker's level and the brothel's, the owner takes their share as with
 any customer, and you become one of the worker's regulars.
 
+## Scouting debtors
+
+New in 0.4.1. It needs **IOU Ledger** (`IOULedger.esp`), which comes with [SkyrimNet Slave Auction](https://github.com/nightlantern-mods/skyrimnet_SlaveAuction) 0.2.0
+and lets any mod put an NPC in debt (a captive set free at the auction owes the buyer, for one).
+The brothel finds it on its own: without it, or with *Scout people in debt* off, nothing changes.
+
+1. Talk to anyone who owes money on the ledger, anywhere, while you have at least one brothel, and
+   pick *(Offer work at the brothel to pay off the debt)*.
+2. Pick how to put it from the AI-written lines. With one brothel the lines differ in how you put
+   it (kindly, or as plain business); with several, each line names one of your brothels, and the
+   one you pick is where they will work.
+3. They agree or refuse, by *Chance a debtor accepts*, and say so in their own words.
+4. If they agree, they become a worker and walk to that brothel. Out of your sight they are moved
+   in through its front door, so a far one does not take days. Once there they stay around the
+   brothel's waiting spot.
+5. After each customer, *Share that pays the debt* of what they kept goes to the debt. The gold
+   leaves the worker; if the debt is owed to you, it comes to you. A notification shows what is
+   left, and SkyrimNet remembers it.
+6. Once the debt is paid off they keep working, or leave the brothel and go back to their own life
+   when *Quit once the debt is paid* is on.
+
+Notes:
+
+- A brothel you have not been inside since you added it may have no front door known yet: a
+  worker scouted for it comes in the next time you are there.
+- Unregistering a scouted worker sends them back to their own life; a debt still owed stays on the
+  ledger, and you can scout them again.
+- Scouted workers keep working as ordinary workers if IOU Ledger is removed later.
+- A follower in debt can be scouted, but a follower framework may still call them back to you.
+
 ## Several brothels
 
 You can run up to three brothels at once (a fourth slot is kept for later use).
@@ -473,6 +517,15 @@ How 1.6x differs from P+:
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
 
+## What is new in 0.4.1
+
+- **Scouting people in debt.** With IOU Ledger (it comes with [SkyrimNet Slave Auction](https://github.com/nightlantern-mods/skyrimnet_SlaveAuction) 0.2.0) installed, talk
+  to anyone who owes money and offer them work at one of your brothels to pay it off. They agree
+  or refuse by a chance of its own, and if they agree they become a worker and go to the brothel
+  you picked; a share of their earnings pays the debt, and once it is paid they stay or quit, as
+  you choose. Four new settings on the *You* page. Without IOU Ledger nothing changes. See
+  [Scouting debtors](#scouting-debtors).
+
 ## What is new in 0.4.0
 
 - **OStim Standalone support.** The brothel now plays its scenes through OStim Standalone as well
@@ -580,7 +633,8 @@ go home, save, then disable the mod.
 - `skyrimnet_Brothel.esp`: the quest, the customer NPCs (men and women) and the leveled lists of
   their looks, the hired worker NPCs (women and men), the *Manage Brothel* power, the accept /
   refuse box for the player, the owner's and your conversation topics (introducing a worker,
-  offering your company, buying a worker's), and the built-in choices quest with its dialogue.
+  offering your company, buying a worker's, scouting someone in debt), and the built-in choices quest
+  with its dialogue.
 - `SEQ/skyrimnet_Brothel.seq`: lets the choices quest's dialogue work from the start of a game.
 - `Scripts/`: the compiled scripts; `Scripts/Source/` has their source. `skyrimnet_BrothelOS` holds
   the OStim Standalone calls, `skyrimnet_BrothelSL` the calls both SexLab versions share,

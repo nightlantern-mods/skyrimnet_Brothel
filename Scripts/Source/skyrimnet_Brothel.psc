@@ -139,6 +139,7 @@ Function Setup()
 	RegisterForModEvent("skyrimnet_Brothel_FamilyReact", "OnFamilyReact")
 	RegisterForModEvent("SkyrimNet_AudioEnded", "OnSkyrimNetAudioEnded")
 	RegisterActions()
+	DetectLedger()
 	; The count shown in the MCM lives in its settings file, not in the save: another save's count
 	; would show after a load.
 	DropMissingWorkers()
@@ -388,6 +389,9 @@ Event OnSettingChange(String a_ID)
 		ScheduleNextUpdate()
 	ElseIf a_ID == "bPlayerWorks:General" || a_ID == "bPlayerBuys:General"
 		UpdateOwnerTalk()
+	ElseIf a_ID == "bScoutDebtors:General"
+		SyncDebtors()
+		UpdateOwnerTalk()
 	ElseIf a_ID == "iFramework:General"
 		; The next scenes use the new framework; scenes starting or playing keep the one they began in.
 		DetectFramework()
@@ -534,7 +538,7 @@ Event OnUpdate()
 			DoUnregisterFollowers()
 		ElseIf queued == "manage"
 			ManageMenu()
-		ElseIf queued == "recommend" || queued == "buy" || queued == "solicit"
+		ElseIf queued == "recommend" || queued == "buy" || queued == "solicit" || queued == "scout"
 			talk = queued
 		EndIf
 		queued = NextAction()
@@ -560,6 +564,11 @@ Event OnUpdate()
 		pendingRecommend = None
 		PlayerSolicits(approached)
 		; Set by the topic; PlayerSolicits may have returned before asking for the turn.
+		playerWantsTalk = False
+	ElseIf talk == "scout"
+		Actor debtor = pendingRecommend
+		pendingRecommend = None
+		PlayerScouts(debtor)
 		playerWantsTalk = False
 	EndIf
 	If ownerDue
@@ -1352,13 +1361,21 @@ Function ScheduleVisitors()
 		RegisterForSingleUpdateGameTime(VisitorTickHours)
 	Else
 		ReleaseAllVisitors()
+		; Scouted workers on their way to the brothel are looked after on the same timer.
+		If ScoutsWalking()
+			RegisterForSingleUpdateGameTime(VisitorTickHours)
+		EndIf
 	EndIf
 EndFunction
 
 Event OnUpdateGameTime()
-	VisitorTick()
+	Bool visiting = GetModSettingBool("bVisitors:General")
+	If visiting
+		VisitorTick()
+	EndIf
+	ScoutTick()
 	UpdateOwnerTalk()
-	If GetModSettingBool("bVisitors:General")
+	If visiting || ScoutsWalking()
 		RegisterForSingleUpdateGameTime(VisitorTickHours)
 	EndIf
 EndEvent
@@ -1747,6 +1764,14 @@ Function UpdateOwnerTalk()
 		buyOnOff.SetValue(0.0)
 	EndIf
 	Game.GetFormFromFile(BuyTopicID, PluginName).SetName(Phrase("buyTopic", "(Buy their company)"))
+	; Scouting a debtor (IOU Ledger), anywhere, while a brothel is set up.
+	GlobalVariable scoutOnOff = Game.GetFormFromFile(PlayerScoutTalkID, PluginName) as GlobalVariable
+	If ScoutingOn()
+		scoutOnOff.SetValue(1.0)
+	Else
+		scoutOnOff.SetValue(0.0)
+	EndIf
+	Game.GetFormFromFile(ScoutTopicID, PluginName).SetName(Phrase("scoutTopic", "(Offer work at the brothel to pay off the debt)"))
 EndFunction
 
 Function ShowOwner()
@@ -1847,6 +1872,7 @@ Function RecordSale(Actor worker, Int amount)
 	StorageUtil.SetFloatValue(worker, "SNB_LastServed", Utility.GetCurrentGameTime())
 	StorageUtil.AdjustIntValue(worker, "SNB_Served", 1)
 	StorageUtil.AdjustIntValue(worker, "SNB_Earned", amount)
+	RepayFromSale(worker, amount)
 EndFunction
 
 ; The owner's topic was picked: the conversation runs once the dialogue menu has closed.
@@ -2196,6 +2222,7 @@ Function RegisterWorker(Actor target)
 	workers[workerCount] = target
 	workerCount += 1
 	target.AddToFaction(WorkerFaction())
+	UntagDebtor(target)
 	SkyrimNetApi.RegisterPersistentEvent(target.GetDisplayName() + Gendered(" works at the brothel now, selling {his} company for gold. {heC} " \
 		+ WorkerAttitude(WorkerLevel(target)) + ".", target), target, None)
 EndFunction
@@ -2443,6 +2470,10 @@ Function RemoveWorkerAt(Int index)
 	workerCount -= 1
 	If worker
 		worker.RemoveFromFaction(WorkerFaction())
+		ForgetScout(worker)
+		If GetModSettingBool("bScoutDebtors:General")
+			TagDebtor(worker)
+		EndIf
 		If IsHiredWorker(worker)
 			worker.Disable()
 			worker.Delete()
@@ -5227,5 +5258,525 @@ Function WorkerChatRound()
 	ReleaseTalk()
 	If GetModSettingBool("bDebugLog:General")
 		DebugLog("Chat: " + s + " and " + l + ", topic " + topicIndex)
+	EndIf
+EndFunction
+
+; ---------------------------------------------------------------------------------------------
+; Scouting debtors (needs IOU Ledger; off on its own without it)
+; ---------------------------------------------------------------------------------------------
+; Talking to an NPC who owes money on IOU Ledger, the player may offer them work at the brothel to
+; pay it off. If they agree they become a worker and go to the current brothel; a share of what they
+; keep from each customer pays the debt (IOULedger_PayDebt). Once it is paid they stay, or quit when
+; the MCM says so. IOU Ledger is never named as a master: it is found by its plugin name and only
+; spoken to through its mod events and the values it keeps on the NPC. Scouted workers keep working
+; if it is removed later.
+
+Int Property PlayerScoutTalkID = 0x82E AutoReadOnly
+Int Property ScoutTopicID = 0x830 AutoReadOnly
+Int Property DebtorFactionID = 0x832 AutoReadOnly
+String Property ChoicesTagScout = "SNB_Scout" AutoReadOnly
+String Property LedgerPlugin = "IOULedger.esp" AutoReadOnly
+String Property LedgerDebtKey = "IOULedger_Debt" AutoReadOnly
+String Property LedgerCreditorKey = "IOULedger_Creditor" AutoReadOnly
+String Property LedgerDebtorsKey = "IOULedger_Debtors" AutoReadOnly
+; On the NPC: 1 while a scouted worker pays off a debt, 2 once it is paid.
+String Property ScoutedKey = "SNB_Scouted" AutoReadOnly
+String Property ScoutRepaidKey = "SNB_DebtRepaid" AutoReadOnly
+; On this quest: the NPCs this mod has put in the debtor faction.
+String Property DebtorTaggedKey = "SNB_DebtorTagged" AutoReadOnly
+
+Bool ledgerPresent
+; Scouted workers still on their way, and the brothel each is going to.
+Actor[] scoutsWalking
+Cell[] scoutsTo
+
+Faction Function DebtorFaction()
+	Return Game.GetFormFromFile(DebtorFactionID, PluginName) as Faction
+EndFunction
+
+; On every load: whether IOU Ledger is there, and the debtor faction brought up to date with it.
+Function DetectLedger()
+	ledgerPresent = Game.IsPluginInstalled(LedgerPlugin)
+	If !scoutsWalking
+		scoutsWalking = new Actor[10]
+	EndIf
+	If !scoutsTo
+		scoutsTo = new Cell[10]
+	EndIf
+	If ledgerPresent
+		RegisterForModEvent("IOULedger_DebtChanged", "OnLedgerDebtChanged")
+	EndIf
+	SyncDebtors()
+	If GetModSettingBool("bDebugLog:General")
+		DebugLog("Scouting: IOU Ledger " + ledgerPresent)
+	EndIf
+EndFunction
+
+Bool Function ScoutingOn()
+	Return ledgerPresent && GetModSettingBool("bScoutDebtors:General") && brothelCells && BrothelCount() > 0
+EndFunction
+
+; What the NPC owes on the ledger now; 0 without IOU Ledger.
+Int Function LedgerDebt(Actor npc)
+	If !ledgerPresent || !npc
+		Return 0
+	EndIf
+	Return StorageUtil.GetIntValue(npc, LedgerDebtKey)
+EndFunction
+
+; The scouting topic is offered to NPCs in the debtor faction: those owing money while scouting is on.
+Function SyncDebtors()
+	Faction mark = DebtorFaction()
+	Bool on = ledgerPresent && GetModSettingBool("bScoutDebtors:General")
+	Int i = StorageUtil.FormListCount(Self, DebtorTaggedKey) - 1
+	While i >= 0
+		Actor tagged = StorageUtil.FormListGet(Self, DebtorTaggedKey, i) as Actor
+		If !tagged
+			StorageUtil.FormListRemoveAt(Self, DebtorTaggedKey, i)
+		ElseIf !on || LedgerDebt(tagged) <= 0 || workers.Find(tagged) >= 0
+			tagged.RemoveFromFaction(mark)
+			StorageUtil.FormListRemoveAt(Self, DebtorTaggedKey, i)
+		EndIf
+		i -= 1
+	EndWhile
+	If !on
+		Return
+	EndIf
+	i = StorageUtil.FormListCount(None, LedgerDebtorsKey) - 1
+	While i >= 0
+		TagDebtor(StorageUtil.FormListGet(None, LedgerDebtorsKey, i) as Actor)
+		i -= 1
+	EndWhile
+EndFunction
+
+; Workers are not offered the topic: they work here already.
+Function TagDebtor(Actor npc)
+	If npc && !npc.IsDead() && LedgerDebt(npc) > 0 && workers.Find(npc) < 0 && !npc.IsInFaction(DebtorFaction())
+		npc.AddToFaction(DebtorFaction())
+		StorageUtil.FormListAdd(Self, DebtorTaggedKey, npc, False)
+	EndIf
+EndFunction
+
+Function UntagDebtor(Actor npc)
+	If npc
+		npc.RemoveFromFaction(DebtorFaction())
+		StorageUtil.FormListRemove(Self, DebtorTaggedKey, npc, True)
+	EndIf
+EndFunction
+
+; From IOU Ledger whenever a debt changes; total 0: the debt is gone (paid, or the bond taken away).
+Event OnLedgerDebtChanged(Form debtor, Int total)
+	Actor npc = debtor as Actor
+	If !npc
+		Return
+	EndIf
+	If total > 0
+		If GetModSettingBool("bScoutDebtors:General")
+			TagDebtor(npc)
+		EndIf
+		Return
+	EndIf
+	UntagDebtor(npc)
+	If StorageUtil.GetIntValue(npc, ScoutedKey) == 1 && workers.Find(npc) >= 0
+		DebtPaidOff(npc)
+	EndIf
+EndEvent
+
+; The scouting topic was picked: the conversation runs once the dialogue menu has closed.
+Function ScoutTopicChosen(Actor npc)
+	PlayerWantsTalk()
+	pendingRecommend = npc
+	QueueAction("scout", -1, 0.5)
+EndFunction
+
+; The player's talking turn without a deal: waits while another pair talks, at most as long as the
+; player's wish for the turn holds the others back, then takes it.
+Function AcquirePlayerTalk()
+	PlayerWantsTalk()
+	Float started = Utility.GetCurrentRealTime()
+	Float now = started
+	While TurnTaken(now, True) && now - started < PlayerWaitTimeoutSeconds
+		Utility.Wait(0.5)
+		now = Utility.GetCurrentRealTime()
+	EndWhile
+	talking = True
+	talkingSince = Utility.GetCurrentRealTime()
+	playerHoldsTalk = True
+	playerWantsTalk = False
+EndFunction
+
+; The NPC's answer, rolled beforehand, as the LLM is told it.
+String Function ScoutAnswer(Actor npc, Bool willAccept)
+	String n = npc.GetDisplayName()
+	If willAccept
+		Return " " + n + " sees no other way to pay what " + HeOf(npc) + " owes and is going to agree, in a way that fits who " + HeOf(npc) + " is."
+	EndIf
+	Return " " + n + " is not willing to do that kind of work and is going to turn the offer down, in a way that fits who " + HeOf(npc) + " is."
+EndFunction
+
+; The player offers this debtor work at a brothel. Through the built-in Player Choices the player
+; picks how to put it; the answer is rolled against the MCM's chance for scouting and the NPC is
+; told it (AskPlayer's answerNote). With one brothel the lines differ in how the offer is put; with
+; several, each line offers work at one of them, and the brothel picked is where the NPC goes. On
+; yes the NPC becomes a worker and sets off for that brothel.
+Function PlayerScouts(Actor npc)
+	Actor player = Game.GetPlayer()
+	If !npc || !ScoutingOn() || npc.IsDead() || workers.Find(npc) >= 0
+		Return
+	EndIf
+	If IsInDeal(player) || InScene(player) || IsInDeal(npc) || InScene(npc)
+		Debug.Notification("$SNB_PlayerBusy")
+		Return
+	EndIf
+	Int debt = LedgerDebt(npc)
+	If debt <= 0
+		UntagDebtor(npc)
+		Return
+	EndIf
+	If workerCount >= MaxWorkers
+		Debug.Notification("$SNB_WorkerListFull")
+		Return
+	EndIf
+	; The brothels on offer, the current one first.
+	Cell[] offered = new Cell[3]
+	Int count = 0
+	If brothelCell
+		offered[0] = brothelCell
+		count = 1
+	EndIf
+	Int b = 0
+	While b < MaxUserBrothels && count < offered.Length
+		If brothelCells[b] && offered.Find(brothelCells[b]) < 0
+			offered[count] = brothelCells[b]
+			count += 1
+		EndIf
+		b += 1
+	EndWhile
+	If count == 0
+		Return
+	EndIf
+	AcquirePlayerTalk()
+	String p = player.GetDisplayName()
+	String n = npc.GetDisplayName()
+	String creditor = StorageUtil.GetStringValue(npc, LedgerCreditorKey)
+	String owedTo = ""
+	If creditor != ""
+		owedTo = " to " + creditor
+	EndIf
+	Bool willAccept = Utility.RandomInt(1, 100) <= GetModSettingInt("iScoutAccept:General")
+	Int share = ScoutDebtShare()
+	String terms = HisOf(npc) + " share of what every customer pays would go to paying off the debt"
+	If share < 100
+		terms = share + "% of " + HisOf(npc) + " share of what every customer pays would go to paying off the debt"
+	EndIf
+	String owes = " to pay off the " + debt + " gold " + HeOf(npc) + " owes"
+	Int picked = ChoiceUnavailable
+	Cell dest = offered[0]
+	If ChoicesReady()
+		String[] intents
+		String knows
+		If count == 1
+			intents = new String[3]
+			intents[0] = "offer " + n + " work at " + BrothelPlace(dest) + owes + ", kindly, as a way out"
+			intents[1] = "offer " + n + " work at " + BrothelPlace(dest) + owes + ", bluntly, as plain business"
+			intents[2] = "say it was nothing after all"
+			knows = p + " knows " + BrothelPlace(dest) + ", where workers sell their company for gold"
+		Else
+			intents = Utility.CreateStringArray(count + 1)
+			knows = p + " knows " + count + " brothels where workers sell their company for gold: "
+			Int i = 0
+			While i < count
+				intents[i] = "offer " + n + " work at " + BrothelPlace(offered[i]) + owes
+				If i > 0
+					knows += ", "
+				EndIf
+				knows += BrothelPlace(offered[i])
+				i += 1
+			EndWhile
+			intents[count] = "say it was nothing after all"
+		EndIf
+		picked = AskPlayer(npc, p + " offers " + n + " work at a brothel to pay off a debt", \
+			n + " owes " + debt + " gold" + owedTo + " and has no means to pay it. " + knows \
+			+ ", and offers " + n + " work there: " + terms + ".", \
+			intents, ChoicesTagScout, -1, True, True, ScoutAnswer(npc, willAccept))
+		If count > 1 && picked != ChoiceUnavailable
+			If picked >= 0 && picked < count
+				dest = offered[picked]
+				picked = 0
+			Else
+				picked = ChoiceLeft
+			EndIf
+		EndIf
+	EndIf
+	If picked == ChoiceUnavailable
+		; Without the choices menu the player's offer, to the current brothel, is narrated and the NPC answers it.
+		picked = 0
+		CustomerReacts(npc, p + " offers " + n + ", who owes " + debt + " gold" + owedTo + ", work at " + BrothelPlace(dest) \
+			+ ", where workers sell their company for gold: " + terms + "." + ScoutAnswer(npc, willAccept) + " " + n + " answers in a few words.")
+	EndIf
+	ReleaseTalk()
+	If GetModSettingBool("bDebugLog:General")
+		DebugLog("Scouting: " + p + " to " + n + " (owes " + debt + "), pick " + picked + " for " + dest.GetName() + ", rolled " + willAccept)
+	EndIf
+	If picked < 0 || picked > 1
+		Return
+	EndIf
+	If !willAccept
+		Debug.Notification(Phrase("scoutDeclinedBefore", "") + n + Phrase("scoutDeclinedAfter", " turned the offer down."))
+		Return
+	EndIf
+	If workers.Find(npc) >= 0 || workerCount >= MaxWorkers || brothelCells.Find(dest) < 0
+		Return
+	EndIf
+	RegisterWorker(npc)
+	StorageUtil.SetIntValue(npc, ScoutedKey, 1)
+	UntagDebtor(npc)
+	ShowWorkerCount()
+	SkyrimNetApi.RegisterPersistentEvent(n + " agreed to " + p + "'s offer to work at " + BrothelPlace(dest) + " to pay off " + HisOf(npc) \
+		+ " debt of " + debt + " gold: " + terms + ".", npc, player)
+	Debug.Notification(Phrase("scoutAcceptedBefore", "") + n + Phrase("scoutAcceptedAfter", " agreed to work at the brothel."))
+	SendScoutToBrothel(npc, dest)
+EndFunction
+
+; "the brothel in Riften Bunkhouse", or "the brothel" for a cell with no name.
+String Function BrothelPlace(Cell place)
+	If place && place.GetName() != ""
+		Return "the brothel in " + place.GetName()
+	EndIf
+	Return "the brothel"
+EndFunction
+
+Int Function ScoutDebtShare()
+	Int share = GetModSettingInt("iScoutDebtShare:General")
+	If share < 0
+		Return 0
+	ElseIf share > 100
+		Return 100
+	EndIf
+	Return share
+EndFunction
+
+; A brothel's waiting spot and front door (both sides): the current brothel's are in the script,
+; the others' on their cells (SaveSlot). None when the player has not been there since it was set up.
+ObjectReference Function BrothelMarkerOf(Cell place)
+	If place == brothelCell
+		Return brothelMarker
+	EndIf
+	Return StorageUtil.GetFormValue(place, "SNB_Marker") as ObjectReference
+EndFunction
+
+ObjectReference Function InsideDoorOf(Cell place)
+	If place == brothelCell
+		Return insideDoor
+	EndIf
+	Return StorageUtil.GetFormValue(place, "SNB_InsideDoor") as ObjectReference
+EndFunction
+
+ObjectReference Function OutsideDoorOf(Cell place)
+	If place == brothelCell
+		Return outsideDoor
+	EndIf
+	Return StorageUtil.GetFormValue(place, "SNB_OutsideDoor") as ObjectReference
+EndFunction
+
+; Sends the new worker to the brothel picked: already there, they stay; otherwise they walk to its
+; waiting spot, and one out of the player's sight is moved in (ScoutTick).
+Function SendScoutToBrothel(Actor npc, Cell dest)
+	If npc.GetParentCell() == dest
+		HoldScoutInBrothel(npc, dest)
+		Return
+	EndIf
+	Int slot = scoutsWalking.Find(npc)
+	If slot < 0
+		slot = scoutsWalking.Find(None)
+	EndIf
+	If slot < 0
+		Return
+	EndIf
+	scoutsWalking[slot] = npc
+	scoutsTo[slot] = dest
+	ObjectReference marker = BrothelMarkerOf(dest)
+	If marker
+		PO3_SKSEFunctions.SetLinkedRef(npc, marker, VisitLink())
+		ActorUtil.AddPackageOverride(npc, VisitTravelPackage(), 60)
+		npc.EvaluatePackage()
+	EndIf
+	RegisterForSingleUpdateGameTime(VisitorTickHours)
+EndFunction
+
+Bool Function ScoutsWalking()
+	Int i = 0
+	While scoutsWalking && i < scoutsWalking.Length
+		If scoutsWalking[i]
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+; Every VisitorTickHours while scouted workers are on their way: one in their brothel (or at its
+; front door) is held there; one the player cannot see is moved in through the front door. A
+; brothel the player has not been in since it was set up has no door known yet: the worker is
+; moved in once the player has been there.
+Function ScoutTick()
+	If !ScoutsWalking()
+		Return
+	EndIf
+	Actor player = Game.GetPlayer()
+	If brothelCell && player.GetParentCell() == brothelCell
+		FindBrothelDoors()
+	EndIf
+	Int i = 0
+	While i < scoutsWalking.Length
+		Actor npc = scoutsWalking[i]
+		Cell dest = scoutsTo[i]
+		If npc
+			If npc.IsDead() || workers.Find(npc) < 0 || !dest || brothelCells.Find(dest) < 0
+				StopScoutWalk(i)
+			ElseIf npc.GetParentCell() == dest
+				scoutsWalking[i] = None
+				HoldScoutInBrothel(npc, dest)
+			Else
+				ObjectReference marker = BrothelMarkerOf(dest)
+				ObjectReference inside = InsideDoorOf(dest)
+				ObjectReference outside = OutsideDoorOf(dest)
+				If inside || marker
+					Bool atDoor = outside && npc.GetWorldSpace() && npc.GetWorldSpace() == outside.GetWorldSpace() \
+						&& npc.GetDistance(outside) < DoorReachDistance
+					If atDoor || !npc.Is3DLoaded()
+						If inside
+							npc.MoveTo(inside)
+						Else
+							npc.MoveTo(marker)
+						EndIf
+						scoutsWalking[i] = None
+						HoldScoutInBrothel(npc, dest)
+					ElseIf marker && npc.GetLinkedRef(VisitLink()) != marker
+						; The waiting spot was placed after they set off.
+						PO3_SKSEFunctions.SetLinkedRef(npc, marker, VisitLink())
+						ActorUtil.AddPackageOverride(npc, VisitTravelPackage(), 60)
+						npc.EvaluatePackage()
+					EndIf
+				EndIf
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+EndFunction
+
+Function StopScoutWalk(Int slot)
+	Actor npc = scoutsWalking[slot]
+	scoutsWalking[slot] = None
+	scoutsTo[slot] = None
+	If npc
+		ActorUtil.RemovePackageOverride(npc, VisitTravelPackage())
+		PO3_SKSEFunctions.SetLinkedRef(npc, None, VisitLink())
+		npc.EvaluatePackage()
+	EndIf
+EndFunction
+
+; In the brothel: the worker stays about its waiting spot instead of going back to their day.
+Function HoldScoutInBrothel(Actor npc, Cell place)
+	ActorUtil.RemovePackageOverride(npc, VisitTravelPackage())
+	ObjectReference marker = BrothelMarkerOf(place)
+	If marker
+		PO3_SKSEFunctions.SetLinkedRef(npc, marker, VisitLink())
+		ActorUtil.AddPackageOverride(npc, VisitWaitPackage(), 60)
+	EndIf
+	npc.EvaluatePackage()
+	If Game.GetPlayer().GetParentCell() == place
+		Debug.Notification(Phrase("scoutArrivedBefore", "") + npc.GetDisplayName() + Phrase("scoutArrivedAfter", " has come to work at the brothel."))
+	EndIf
+	If GetModSettingBool("bDebugLog:General")
+		DebugLog("Scouting: " + npc.GetDisplayName() + " is at " + place.GetName())
+	EndIf
+EndFunction
+
+; A scouted worker is no longer a worker: back to their own day.
+Function ForgetScout(Actor npc)
+	If StorageUtil.GetIntValue(npc, ScoutedKey) == 0
+		Return
+	EndIf
+	StorageUtil.UnsetIntValue(npc, ScoutedKey)
+	Int slot = -1
+	If scoutsWalking
+		slot = scoutsWalking.Find(npc)
+	EndIf
+	If slot >= 0
+		scoutsWalking[slot] = None
+		scoutsTo[slot] = None
+	EndIf
+	ActorUtil.RemovePackageOverride(npc, VisitTravelPackage())
+	ActorUtil.RemovePackageOverride(npc, VisitWaitPackage())
+	PO3_SKSEFunctions.SetLinkedRef(npc, None, VisitLink())
+	npc.EvaluatePackage()
+EndFunction
+
+; After a customer: a share of what the scouted worker kept goes to the debt. The gold leaves the
+; worker; when the player is the creditor, it comes to the player.
+Function RepayFromSale(Actor worker, Int kept)
+	If !ledgerPresent || kept <= 0 || StorageUtil.GetIntValue(worker, ScoutedKey) != 1
+		Return
+	EndIf
+	Int debt = LedgerDebt(worker)
+	If debt <= 0
+		Return
+	EndIf
+	Int repay = kept * ScoutDebtShare() / 100
+	If repay > debt
+		repay = debt
+	EndIf
+	If repay <= 0
+		Return
+	EndIf
+	Form gold = Game.GetFormFromFile(0x00000F, "Skyrim.esm")
+	worker.RemoveItem(gold, repay, True)
+	Actor player = Game.GetPlayer()
+	String creditor = StorageUtil.GetStringValue(worker, LedgerCreditorKey)
+	If creditor != "" && creditor == player.GetDisplayName()
+		player.AddItem(gold, repay, True)
+	EndIf
+	StorageUtil.AdjustIntValue(worker, ScoutRepaidKey, repay)
+	Int left = debt - repay
+	String n = worker.GetDisplayName()
+	If left > 0
+		SkyrimNetApi.RegisterPersistentEvent(n + " paid " + repay + " gold of " + HisOf(worker) + " debt out of tonight's earnings and still owes " \
+			+ left + " gold.", worker, None)
+		Debug.Notification(Phrase("scoutRepaidBefore", "") + n + Phrase("scoutRepaidMiddle", ": repaid ") + repay \
+			+ Phrase("scoutRepaidLeft", " gold, still owes ") + left + Phrase("scoutRepaidAfter", " gold."))
+	EndIf
+	If GetModSettingBool("bDebugLog:General")
+		DebugLog("Scouting: " + n + " repaid " + repay + " of " + debt)
+	EndIf
+	Int handle = ModEvent.Create("IOULedger_PayDebt")
+	If handle
+		ModEvent.PushForm(handle, worker)
+		ModEvent.PushInt(handle, repay)
+		ModEvent.Send(handle)
+	EndIf
+EndFunction
+
+; The debt is gone: the worker stays, or quits when the MCM says so.
+Function DebtPaidOff(Actor worker)
+	StorageUtil.SetIntValue(worker, ScoutedKey, 2)
+	String n = worker.GetDisplayName()
+	Bool quits = GetModSettingBool("bScoutQuitWhenPaid:General")
+	If quits
+		SkyrimNetApi.RegisterPersistentEvent(n + " has paid off " + HisOf(worker) + " whole debt with " + HisOf(worker) \
+			+ " earnings at the brothel, owes nothing any more, and has stopped working there.", worker, None)
+		Debug.Notification(Phrase("scoutQuitBefore", "") + n + Phrase("scoutQuitAfter", " has paid off the debt and leaves the brothel."))
+		Int index = workers.Find(worker)
+		If index >= 0
+			RemoveWorkerAt(index)
+			ShowWorkerCount()
+		EndIf
+	Else
+		SkyrimNetApi.RegisterPersistentEvent(n + " has paid off " + HisOf(worker) + " whole debt with " + HisOf(worker) \
+			+ " earnings at the brothel and owes nothing any more, and keeps working there.", worker, None)
+		Debug.Notification(Phrase("scoutPaidBefore", "") + n + Phrase("scoutPaidAfter", " has paid off the debt."))
+	EndIf
+	If GetModSettingBool("bDebugLog:General")
+		DebugLog("Scouting: " + n + " paid off the debt, quits " + quits)
 	EndIf
 EndFunction
