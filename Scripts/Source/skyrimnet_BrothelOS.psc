@@ -90,7 +90,24 @@ Int Function StartScene(Actor[] positions, ObjectReference bed, Int furniturePre
 	If sceneID != ""
 		OThreadBuilder.SetStartingAnimation(builder, sceneID)
 	EndIf
+	; The scene search takes a while; an actor unloaded meanwhile (the player left) must not be
+	; handed to OStim.
+	If !AllLoaded(sorted)
+		OThreadBuilder.Cancel(builder)
+		Return -1
+	EndIf
 	Return OThreadBuilder.Start(builder)
+EndFunction
+
+Bool Function AllLoaded(Actor[] actors) Global
+	Int i = 0
+	While i < actors.Length
+		If !actors[i] || actors[i].IsDisabled() || !actors[i].Is3DLoaded()
+			Return False
+		EndIf
+		i += 1
+	EndWhile
+	Return True
 EndFunction
 
 ; Stops the thread of a scene that never played if OStim still runs it. Returns whether it did.

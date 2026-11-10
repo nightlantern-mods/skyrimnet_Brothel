@@ -1,4 +1,4 @@
-# SkyrimNet Brothel 0.4.2
+# SkyrimNet Brothel 0.4.3
 
 > **New in 0.4.1: scouting people in debt.** Talk to anyone who owes money and offer them work at
 > your brothel to pay it off. You pick how to put it from AI-written lines (with several brothels,
@@ -517,6 +517,15 @@ How 1.6x differs from P+:
 
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
+
+## What is new in 0.4.3
+
+- **No crash when you leave while a pair is about to start.** A scene could start just as you
+  walked out of the brothel, with one of the pair no longer loaded, and OStim then crashed the game
+  when it let them go. A scene now starts only while you are in the brothel and both of the pair
+  are there and loaded; this is checked again before every try and right before the scene is
+  handed to OStim or SexLab. Otherwise the deal is let go and the customer gets the gold back
+  (with no message while you are away).
 
 ## What is new in 0.4.2
 

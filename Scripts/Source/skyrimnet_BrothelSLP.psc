@@ -43,6 +43,10 @@ EndFunction
 Int Function StartScene(Quest api, Actor[] positions, ObjectReference center, Int furniturePref, String positionTag, String hook) Global
 	SexLabFramework sexLab = api as SexLabFramework
 	String[] scenes = OneSexPositionScenes(positions, center, furniturePref, positionTag)
+	; The scene search takes a while; an actor unloaded meanwhile (the player left) is not handed on.
+	If !skyrimnet_BrothelSL.AllLoaded(positions)
+		Return -1
+	EndIf
 	SexLabThread thread
 	If scenes.Length > 0
 		thread = sexLab.StartSceneEx(positions, scenes, None, "", center, furniturePref, hook)

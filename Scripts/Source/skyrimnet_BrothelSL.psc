@@ -35,3 +35,16 @@ String Function EndIfStuck(Quest api, Int threadID) Global
 	EndIf
 	Return ""
 EndFunction
+
+; Whether every actor is enabled and loaded: the scene search takes a while, and one unloaded
+; meanwhile (the player left) is not handed to SexLab.
+Bool Function AllLoaded(Actor[] actors) Global
+	Int i = 0
+	While i < actors.Length
+		If !actors[i] || actors[i].IsDisabled() || !actors[i].Is3DLoaded()
+			Return False
+		EndIf
+		i += 1
+	EndWhile
+	Return True
+EndFunction

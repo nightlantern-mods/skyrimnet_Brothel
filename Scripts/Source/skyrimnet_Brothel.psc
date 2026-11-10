@@ -3634,9 +3634,8 @@ Function StartBrothelScene(Int slot, String positionTag = "")
 	; pair, so a pair with the player is brought to the scene's place first.
 	ReleaseHold(slot) ; SexLab moves the pair itself from here
 	Actor player = Game.GetPlayer()
-	If positions[1].IsDisabled() || !positions[1].Is3DLoaded()
-		Debug.Notification("$SNB_SceneFailed")
-		ReleaseDeal(slot)
+	If !PairReady(positions)
+		SceneFailed(slot)
 		Return
 	EndIf
 	If center && (worker == player || positions[1] == player)
@@ -3650,7 +3649,13 @@ Function StartBrothelScene(Int slot, String positionTag = "")
 	Int attempt = 0
 	Bool playing = False
 	While attempt < SceneAttempts && !playing
-		threadID = StartSceneOnce(positions, center, furniturePref, positionTag, ostim)
+		; Checked again before every try: the bed search and the framework's own calls take time,
+		; and the player may leave meanwhile.
+		If PairReady(positions)
+			threadID = StartSceneOnce(positions, center, furniturePref, positionTag, ostim)
+		Else
+			threadID = -1
+		EndIf
 		If threadID >= 0
 			playing = StillPlaying(positions, ostim)
 			If !playing
@@ -3678,14 +3683,42 @@ Function StartBrothelScene(Int slot, String positionTag = "")
 				player.MoveTo(dealSpots[slot])
 			EndIf
 		EndIf
-		Debug.Notification("$SNB_SceneFailed")
-		ReleaseDeal(slot)
+		SceneFailed(slot)
 		Return
 	EndIf
 	dealThreads[slot] = threadID
 	dealStates[slot] = DealInScene
 	dealStarted[slot] = Utility.GetCurrentRealTime()
 	RelockPlayer(slot)
+EndFunction
+
+; Whether a scene may start for this pair now: both in the brothel, enabled, alive and loaded, and
+; the player there too (the player's own deals have the player in the pair). A scene started just as
+; the player walked out, with the customer no longer loaded, crashed the game in OStim's release of
+; the actors (GameActor::unlock).
+Bool Function PairReady(Actor[] positions)
+	If !brothelCell || Game.GetPlayer().GetParentCell() != brothelCell
+		Return False
+	EndIf
+	Int i = 0
+	While i < positions.Length
+		Actor one = positions[i]
+		If !one || one.IsDisabled() || one.IsDead() || !one.Is3DLoaded() || one.GetParentCell() != brothelCell
+			Return False
+		EndIf
+		i += 1
+	EndWhile
+	Return True
+EndFunction
+
+; No scene: the deal is let go (the customer gets the gold back). Told only to a player who is there.
+Function SceneFailed(Int slot)
+	If brothelCell && Game.GetPlayer().GetParentCell() == brothelCell
+		Debug.Notification("$SNB_SceneFailed")
+	ElseIf GetModSettingBool("bDebugLog:General")
+		DebugLog("Scene not started for " + dealWorkers[slot] + " and " + dealCustomers[slot] + ": the player is not in the brothel")
+	EndIf
+	ReleaseDeal(slot)
 EndFunction
 
 ; SexLab P+ holds the player in a scene with SetActorMovement (AI-driven, movement and the like

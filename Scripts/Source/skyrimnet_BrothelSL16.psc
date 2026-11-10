@@ -37,6 +37,10 @@ Int Function StartScene(Quest api, Actor[] positions, ObjectReference center, In
 	If count == 0 && positionTag != ""
 		count = Collect(api, positions, "", bedFilter, found, 10, 200)
 	EndIf
+	; The animation search takes a while; an actor unloaded meanwhile (the player left) is not handed on.
+	If !skyrimnet_BrothelSL.AllLoaded(positions)
+		Return -1
+	EndIf
 	sslBaseAnimation[] anims = sslUtility.AnimationArray(count)
 	Int i = 0
 	While i < count
