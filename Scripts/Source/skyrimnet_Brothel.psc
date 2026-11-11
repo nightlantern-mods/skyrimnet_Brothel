@@ -146,6 +146,8 @@ Function Setup()
 	DropMissingWorkers()
 	ShowWorkerCount()
 	SyncOwnerState()
+	; Customers no brothel keeps track of (see RemoveStrayCustomers) go when a save loads near them.
+	RemoveStrayCustomers()
 	SyncBrothelGross()
 	ownerNextAt = Utility.GetCurrentRealTime() + OwnerIntervalSeconds()
 	solicitNextAt = Utility.GetCurrentRealTime() + SolicitIntervalSeconds()
@@ -533,8 +535,7 @@ Event OnUpdate()
 		ElseIf queued == "clear"
 			CloseBrothel(pendingSlot)
 		ElseIf queued == "sync"
-			SyncCustomers()
-			SyncHiredWorkers()
+			SyncCounts()
 		ElseIf queued == "registerfollowers"
 			DoRegisterFollowers()
 		ElseIf queued == "unregisterfollowers"
@@ -752,6 +753,107 @@ Function SyncCustomers()
 	If !brothelCell
 		Return
 	EndIf
+	SyncCustomersLocked()
+	RemoveStrayCustomersLocked()
+EndFunction
+
+; ---------------------------------------------------------------------------------------------
+; The brothels' gate
+; ---------------------------------------------------------------------------------------------
+
+; Everything that changes which brothels there are, which one is current, or who their customers
+; and hired workers are runs one at a time, behind this gate: switching to the brothel the player
+; walked into, adding one, closing one, and bringing the customers and hired workers to the MCM's
+; counts. These are asked for from several threads at once (location changes, the player alias's
+; timer, hotkeys, loads, the MCM's queue, the Manage Brothel menu), and each takes many frames
+; (placing and deleting NPCs). Before 0.4.7 two could run together: two switches each filled the
+; same empty places with customers and saved the brothels' lists across each other, which left
+; customers no brothel kept track of.
+;
+; Rules: the public functions (SwitchToPlayersBrothel, DoDesignateBrothel, CloseBrothel, SyncCounts,
+; RemoveStrayCustomers) enter the gate, do the work in their ...Locked function and leave it. A
+; ...Locked function, SyncCustomers, SyncHiredWorkers, BrothelChanged, SaveSlot and LoadSlot are
+; only ever called inside the gate and never call a public one (the gate is not re-entrant).
+Bool gateBusy
+Float gateSince
+; A gate held longer than this is a leftover (the game was closed mid-way) and is taken over.
+Float Property GateStaleSeconds = 120.0 AutoReadOnly
+
+; Waits for the gate and takes it. Nothing is dropped: a caller waits its turn.
+Function EnterGate()
+	Float now = Utility.GetCurrentRealTime()
+	While gateBusy && now >= gateSince && now - gateSince < GateStaleSeconds
+		Utility.Wait(0.25)
+		now = Utility.GetCurrentRealTime()
+	EndWhile
+	gateBusy = True
+	gateSince = now
+EndFunction
+
+Function LeaveGate()
+	gateBusy = False
+EndFunction
+
+; False while a brothel is being switched to, added, closed or filled. Work that reads the current
+; brothel but does not change the brothels (a new deal, the visitors' tick) skips its turn then
+; instead of waiting: it comes round again.
+Bool Function GateOpen()
+	Float now = Utility.GetCurrentRealTime()
+	Return !gateBusy || now < gateSince || now - gateSince >= GateStaleSeconds
+EndFunction
+
+; The MCM's counts changed (or may have): customers and hired workers of the current brothel.
+Function SyncCounts()
+	EnterGate()
+	SyncCustomers()
+	SyncHiredWorkers()
+	LeaveGate()
+EndFunction
+
+; Removes the brothel's customer NPCs near the player that no brothel keeps track of (left by the
+; double sync before 0.4.7, or by a brothel closed while they were away): not one of the current
+; brothel's, not stored for another brothel, not in a deal or a scene.
+Function RemoveStrayCustomers()
+	EnterGate()
+	RemoveStrayCustomersLocked()
+	LeaveGate()
+EndFunction
+
+Function RemoveStrayCustomersLocked()
+	Actor player = Game.GetPlayer()
+	ActorBase manBase = Game.GetFormFromFile(CustomerBaseID, PluginName) as ActorBase
+	ActorBase womanBase = Game.GetFormFromFile(CustomerFemaleBaseID, PluginName) as ActorBase
+	ObjectReference[] found = PO3_SKSEFunctions.FindAllReferencesOfFormType(player, FormTypeNPC, 8000.0)
+	Int removed = 0
+	Int i = 0
+	While i < found.Length
+		Actor one = found[i] as Actor
+		If one && !one.IsDisabled() && customers.Find(one) < 0
+			ActorBase base = one.GetActorBase()
+			If (base == manBase || base == womanBase) && !IsInDeal(one) && !InScene(one)
+				Bool kept = False
+				Int b = 0
+				While b < BrothelSlots && !kept
+					If brothelCells[b] && b != currentSlot && StorageUtil.FormListHas(brothelCells[b], "SNB_Customers", one)
+						kept = True
+					EndIf
+					b += 1
+				EndWhile
+				If !kept
+					one.Disable()
+					one.Delete()
+					removed += 1
+				EndIf
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+	If removed > 0 && GetModSettingBool("bDebugLog:General")
+		DebugLog("Customers: " + removed + " stray customers removed")
+	EndIf
+EndFunction
+
+Function SyncCustomersLocked()
 	Actor player = Game.GetPlayer()
 	Int men = 0
 	Int women = 0
@@ -1157,22 +1259,33 @@ Function ClearSlotStorage(Cell slotCell)
 EndFunction
 
 ; Called when the player may have walked into another brothel (location changes, the player
-; alias's timer, hotkeys, loads).
+; alias's timer, hotkeys, loads). Asked often and from several threads: the cell is looked at again
+; once inside the gate, as another caller may have made the switch meanwhile.
 Function SwitchToPlayersBrothel()
-	If !brothelCells
+	If PlayersOtherBrothel() < 0
 		Return
+	EndIf
+	EnterGate()
+	Int slot = PlayersOtherBrothel()
+	If slot >= 0
+		SwitchToSlotLocked(slot)
+	EndIf
+	LeaveGate()
+EndFunction
+
+; The slot of the brothel the player is in when it is not the current one, else -1.
+Int Function PlayersOtherBrothel()
+	If !brothelCells
+		Return -1
 	EndIf
 	Cell here = Game.GetPlayer().GetParentCell()
 	If !here || here == brothelCell
-		Return
+		Return -1
 	EndIf
-	Int slot = brothelCells.Find(here)
-	If slot >= 0
-		SwitchToSlot(slot)
-	EndIf
+	Return brothelCells.Find(here)
 EndFunction
 
-Function SwitchToSlot(Int slot)
+Function SwitchToSlotLocked(Int slot)
 	If slot == currentSlot
 		Return
 	EndIf
@@ -1267,6 +1380,12 @@ EndFunction
 ; Makes the interior the player stands in a new brothel, or makes it the current one if it already
 ; is one. The other brothels stay as they are.
 Function DoDesignateBrothel()
+	EnterGate()
+	DesignateBrothelLocked()
+	LeaveGate()
+EndFunction
+
+Function DesignateBrothelLocked()
 	Actor player = Game.GetPlayer()
 	Cell here = player.GetParentCell()
 	If !here || !here.IsInterior()
@@ -1275,7 +1394,7 @@ Function DoDesignateBrothel()
 	EndIf
 	Int existing = brothelCells.Find(here)
 	If existing >= 0
-		SwitchToSlot(existing)
+		SwitchToSlotLocked(existing)
 		Debug.Notification("$SNB_AlreadyBrothel")
 		Return
 	EndIf
@@ -1290,13 +1409,8 @@ Function DoDesignateBrothel()
 	brothelCells[slot] = here
 	ClearSlotStorage(here)
 	LoadSlot(slot)
-	Int women = TargetWomenCount()
-	Int i = 0
-	While i < TargetCustomerCount()
-		customers[i] = SpawnCustomer(player, i < women)
-		i += 1
-	EndWhile
 	FindBrothelDoors()
+	; The customers move in here: SyncCustomers fills the new brothel beside the player.
 	BrothelChanged()
 	Debug.Notification("$SNB_Designated")
 EndFunction
@@ -1304,6 +1418,12 @@ EndFunction
 ; Closes the brothel in this slot: its customers and hired workers leave, its town and owner are
 ; forgotten. Closing the current one makes another brothel (if any) the current one.
 Function CloseBrothel(Int slot)
+	EnterGate()
+	CloseBrothelLocked(slot)
+	LeaveGate()
+EndFunction
+
+Function CloseBrothelLocked(Int slot)
 	If slot < 0 || slot >= BrothelSlots || !brothelCells[slot]
 		Return
 	EndIf
@@ -1344,6 +1464,10 @@ Function CloseBrothel(Int slot)
 		LoadSlot(next)
 	EndIf
 	BrothelChanged()
+	If !brothelCell
+		; No brothel left to sync: customers nobody kept track of go too.
+		RemoveStrayCustomersLocked()
+	EndIf
 	Debug.Notification("$SNB_Cleared")
 EndFunction
 
@@ -1407,8 +1531,8 @@ Function ScheduleVisitors()
 		RegisterForSingleUpdateGameTime(VisitorTickHours)
 	Else
 		ReleaseAllVisitors()
-		; Scouted workers on their way to the brothel are looked after on the same timer.
-		If ScoutsWalking()
+		; Scouted workers are looked after on the same timer (on their way, or away from the brothels).
+		If HasScouts()
 			RegisterForSingleUpdateGameTime(VisitorTickHours)
 		EndIf
 	EndIf
@@ -1421,7 +1545,7 @@ Event OnUpdateGameTime()
 	EndIf
 	ScoutTick()
 	UpdateOwnerTalk()
-	If visiting || ScoutsWalking()
+	If visiting || HasScouts()
 		RegisterForSingleUpdateGameTime(VisitorTickHours)
 	EndIf
 EndEvent
@@ -1429,6 +1553,9 @@ EndEvent
 ; Every VisitorTickHours: learns the town's people if the player is there, moves visitors along,
 ; and during the opening hours, now and then, sends one more on the way.
 Function VisitorTick()
+	If !GateOpen()
+		Return
+	EndIf
 	If !brothelCell
 		ReleaseAllVisitors()
 		Return
@@ -2419,8 +2546,7 @@ Function ManageMenu()
 		EndIf
 	EndWhile
 	If countsChanged
-		SyncCustomers()
-		SyncHiredWorkers()
+		SyncCounts()
 	EndIf
 EndFunction
 
@@ -2723,7 +2849,15 @@ EndFunction
 ; Claims a free slot for the pair, or returns -1 if none is free or either of them is already in a
 ; deal (another serving thread may have picked them meanwhile).
 Int Function ReserveDeal(Actor worker, Actor customer)
-	If IsInDeal(worker) || IsInDeal(customer)
+	; No new deal while the brothels change (see the brothels' gate): the pair may be leaving. That
+	; takes a few seconds (right after walking in, say), so the deal waits for it rather than fail
+	; with "busy"; the claim below runs with nothing in between, so it is still atomic.
+	Float waited = 0.0
+	While !GateOpen() && waited < 15.0
+		Utility.Wait(0.25)
+		waited += 0.25
+	EndWhile
+	If !GateOpen() || IsInDeal(worker) || IsInDeal(customer) || !brothelCell 			|| worker.GetParentCell() != brothelCell || customer.GetParentCell() != brothelCell
 		Return -1
 	EndIf
 	Int i = 0
@@ -2757,15 +2891,24 @@ EndFunction
 
 Function ReleaseDeal(Int slot)
 	Actor customer = dealCustomers[slot]
-	ReleaseHold(slot)
 	; A deal that ends before its scene played (the scene failed, a timeout, the player walked away)
-	; gives the gold back; one whose scene played keeps it.
+	; gives the gold back; one whose scene played keeps it. The payment is taken off the deal here,
+	; before any call that lets another thread in: two threads releasing the same deal (a brothel
+	; switch and a failed scene, say) both refunded it before 0.4.7.
+	Actor paidWorker = dealWorkers[slot]
+	Int refundWorker = 0
+	Int refundOwner = 0
 	If dealPaid[slot] && dealStates[slot] != DealInScene
-		RefundDeal(slot)
+		refundWorker = dealPaidWorker[slot]
+		refundOwner = dealPaidOwner[slot]
 	EndIf
 	dealPaid[slot] = False
 	dealPaidWorker[slot] = 0
 	dealPaidOwner[slot] = 0
+	ReleaseHold(slot)
+	If refundWorker + refundOwner > 0
+		RefundDeal(paidWorker, customer, refundWorker, refundOwner)
+	EndIf
 	dealSolicited[slot] = False
 	dealStates[slot] = DealFree
 	dealIdleRuns[slot] = 0
@@ -3050,7 +3193,9 @@ Function ServePair(Actor worker, Actor customer, Bool quiet)
 	EndIf
 	Int slot = ReserveDeal(worker, customer)
 	If slot < 0
-		Notify("$SNB_Busy", quiet)
+		; Another press or the timer took one of the pair meanwhile: no free worker after all. "Busy"
+		; is kept for the pairs-at-once limit; here it read as if that limit had been reached.
+		Notify("$SNB_NoWorker", quiet)
 		Return
 	EndIf
 	Int serial = dealSerials[slot]
@@ -4512,24 +4657,21 @@ Function PayForDeal(Int slot)
 EndFunction
 
 ; The deal fell through before its scene: the worker and the owner give the gold back.
-Function RefundDeal(Int slot)
-	Actor worker = dealWorkers[slot]
-	Actor customer = dealCustomers[slot]
+Function RefundDeal(Actor worker, Actor customer, Int paidWorker, Int paidOwner)
 	Form gold = Game.GetFormFromFile(0x00000F, "Skyrim.esm")
-	If worker && dealPaidWorker[slot] > 0
-		worker.RemoveItem(gold, dealPaidWorker[slot], True)
+	If worker && paidWorker > 0
+		worker.RemoveItem(gold, paidWorker, True)
 	EndIf
-	AddEarnings(worker, -(dealPaidWorker[slot] + dealPaidOwner[slot]))
-	If brothelOwner && dealPaidOwner[slot] > 0
-		brothelOwner.RemoveItem(gold, dealPaidOwner[slot], True)
-		StorageUtil.AdjustIntValue(brothelOwner, "SNB_HouseTake", -dealPaidOwner[slot])
+	AddEarnings(worker, -(paidWorker + paidOwner))
+	If brothelOwner && paidOwner > 0
+		brothelOwner.RemoveItem(gold, paidOwner, True)
+		StorageUtil.AdjustIntValue(brothelOwner, "SNB_HouseTake", -paidOwner)
 	EndIf
-	If customer && customer == Game.GetPlayer() && dealPaidWorker[slot] + dealPaidOwner[slot] > 0
-		customer.AddItem(gold, dealPaidWorker[slot] + dealPaidOwner[slot], True)
+	If customer && customer == Game.GetPlayer() && paidWorker + paidOwner > 0
+		customer.AddItem(gold, paidWorker + paidOwner, True)
 	EndIf
-	If worker && customer && dealPaidWorker[slot] + dealPaidOwner[slot] > 0
-		SkyrimNetApi.RegisterPersistentEvent("The night between " + worker.GetDisplayName() + " and " + customer.GetDisplayName() \
-			+ " fell through, so " + customer.GetDisplayName() + " got the gold back.", worker, customer)
+	If worker && customer && paidWorker + paidOwner > 0
+		SkyrimNetApi.RegisterPersistentEvent("The night between " + worker.GetDisplayName() + " and " + customer.GetDisplayName() 			+ " fell through, so " + customer.GetDisplayName() + " got the gold back.", worker, customer)
 	EndIf
 EndFunction
 
@@ -5784,6 +5926,8 @@ EndFunction
 ; Sends the new worker to the brothel picked: already there, they stay; otherwise they walk to its
 ; waiting spot, and one out of the player's sight is moved in (ScoutTick).
 Function SendScoutToBrothel(Actor npc, Cell dest)
+	; The brothel they work at is kept on them: ReturnStrayScouts sends them back there.
+	StorageUtil.SetFormValue(npc, ScoutHomeKey, dest)
 	If npc.GetParentCell() == dest
 		HoldScoutInBrothel(npc, dest)
 		Return
@@ -5822,11 +5966,14 @@ EndFunction
 ; brothel the player has not been in since it was set up has no door known yet: the worker is
 ; moved in once the player has been there.
 Function ScoutTick()
+	If GateOpen()
+		ReturnStrayScouts()
+	EndIf
 	If !ScoutsWalking()
 		Return
 	EndIf
 	Actor player = Game.GetPlayer()
-	If brothelCell && player.GetParentCell() == brothelCell
+	If brothelCell && player.GetParentCell() == brothelCell && GateOpen()
 		FindBrothelDoors()
 	EndIf
 	Int i = 0
@@ -5878,6 +6025,48 @@ Function StopScoutWalk(Int slot)
 	EndIf
 EndFunction
 
+String Property ScoutHomeKey = "SNB_ScoutHome" AutoReadOnly
+
+; Whether any registered worker was scouted (they are looked after on the visitors' timer).
+Bool Function HasScouts()
+	Int i = 0
+	While i < workerCount
+		If workers[i] && StorageUtil.GetIntValue(workers[i], ScoutedKey) > 0
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+; A scouted worker belongs in their brothel. One found outside every brothel (their hold was lost,
+; another mod or their own day took them away, the brothel they worked at was closed) is sent back:
+; to their own brothel, or to the current one when theirs is gone or was never recorded (workers
+; scouted before 0.4.7). Not while they are with a customer, already on the way, or following the
+; player; ScoutTick then walks them in, or moves them in through the door when out of sight.
+Function ReturnStrayScouts()
+	If !brothelCells || BrothelCount() == 0
+		Return
+	EndIf
+	Int i = 0
+	While i < workerCount
+		Actor npc = workers[i]
+		If npc && StorageUtil.GetIntValue(npc, ScoutedKey) > 0 && !npc.IsDead() && scoutsWalking.Find(npc) < 0 				&& !IsInDeal(npc) && !InScene(npc) && !IsFollower(npc) && brothelCells.Find(npc.GetParentCell()) < 0
+			Cell home = StorageUtil.GetFormValue(npc, ScoutHomeKey) as Cell
+			If !home || brothelCells.Find(home) < 0
+				home = brothelCell
+			EndIf
+			If home
+				If GetModSettingBool("bDebugLog:General")
+					DebugLog("Scouting: " + npc.GetDisplayName() + " is away from the brothels; sent back to " + home.GetName())
+				EndIf
+				SendScoutToBrothel(npc, home)
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+EndFunction
+
 ; In the brothel: the worker stays there instead of going back to their day.
 Function HoldScoutInBrothel(Actor npc, Cell place)
 	SettleScout(npc)
@@ -5923,6 +6112,7 @@ Function ForgetScout(Actor npc)
 		Return
 	EndIf
 	StorageUtil.UnsetIntValue(npc, ScoutedKey)
+	StorageUtil.UnsetFormValue(npc, ScoutHomeKey)
 	Int slot = -1
 	If scoutsWalking
 		slot = scoutsWalking.Find(npc)

@@ -1,4 +1,9 @@
-# SkyrimNet Brothel 0.4.6
+# SkyrimNet Brothel 0.4.7
+
+> **0.4.7 fixes customers left behind or missing with several brothels.** Walking into another
+> brothel could run the switch twice: customers appeared that no brothel kept track of (they stayed
+> after closing), and raised counts did not show. Scouted workers found outside the brothels are
+> now sent back. See [What is new in 0.4.7](#what-is-new-in-047).
 
 > **0.4.6: a worker who quits says goodbye and is done.** One who quit could keep talking to you,
 > urging you to leave with them. 0.4.5 fixed the dialogue menu ignoring your pick (new in 0.4.4).
@@ -420,6 +425,9 @@ Notes:
   ledger, and you can scout them again.
 - Scouted workers keep working as ordinary workers if IOU Ledger is removed later.
 - A follower in debt can be scouted, but a follower framework may still call them back to you.
+- A scouted worker found outside every brothel (another mod or their own day took them away, or
+  their brothel was closed) is sent back within a quarter of an hour of game time: to their own
+  brothel, or to the current one. Not while they follow you.
 
 ## Scouting anyone
 
@@ -549,6 +557,24 @@ How 1.6x differs from P+:
 
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
+
+## What is new in 0.4.7
+
+- **Several brothels: no more customers left behind or missing.** Switching to the brothel you
+  walked into, adding one, closing one and filling the customers and hired workers could run two at
+  a time (a location change and a timer both asked for the switch). Both filled the same places, so
+  customers appeared that no brothel kept track of: they stayed after the brothel was closed, and
+  customers you added in the MCM could end up outside or not appear. These now run strictly one
+  after another, and no new deal starts while one runs (it waits a few seconds).
+- **Leftover customers are removed.** Customers no brothel keeps track of are removed near you
+  when a save loads, when customers are filled and when the last brothel is closed. If some remain
+  where a brothel used to be, save and load there once.
+- **Scouted workers come back.** A scouted worker found outside every brothel is sent back to the
+  brothel they work at (see *Scouting debtors*, notes). Before, nothing brought them back.
+- **A refund is paid once.** When a deal fell through as you walked into another brothel, the
+  worker could give the gold back twice.
+- **"Pairs at once" message.** The message that the pairs-at-once limit is reached also showed
+  when a picked worker had just been taken by another customer; that now reads "no free worker".
 
 ## What is new in 0.4.6
 
