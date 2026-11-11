@@ -1,4 +1,11 @@
-# SkyrimNet Brothel 0.4.3
+# SkyrimNet Brothel 0.4.4
+
+> **New in 0.4.4: scouting anyone.** Talk to an adult who owes nothing and offer them work at
+> your brothel. It is a harder sell (10% agree by default), but no other mod is needed. Those who
+> agree came of their own free will: they keep everything they earn, and after any customer they
+> may quit, saying why before they leave. 0.4.4 also fixes the Japanese translation's topic names
+> and messages, which showed in English, and OStim scenes, which ignored the position you picked.
+> See [Scouting anyone](#scouting-anyone) and [What is new in 0.4.4](#what-is-new-in-044).
 
 > **New in 0.4.1: scouting people in debt.** Talk to anyone who owes money and offer them work at
 > your brothel to pay it off. You pick how to put it from AI-written lines (with several brothels,
@@ -212,6 +219,10 @@ in the order pressed.
 | Chance a debtor accepts | 50% | 0 to 100%. Whether someone you scout agrees. They are told the answer before they speak, so their words match it. Separate from *Chance a customer accepts*. |
 | Share that pays the debt | 100% | 0 to 100% of what a scouted worker keeps from each customer that goes to the debt. |
 | Quit once the debt is paid | Off | On: a scouted worker leaves the brothel once the debt is paid off. Off: they keep working. |
+| *Scouting anyone else* | | |
+| Scout people who owe nothing | On | Offers *(Offer work at the brothel)* when you talk to an adult who owes nothing; see *Scouting anyone* below. Needs no other mod. |
+| Chance someone accepts | 10% | 0 to 100%. Whether someone who owes nothing agrees. They are told the answer before they speak, so their words match it. Separate from *Chance a debtor accepts*. |
+| Chance to quit after a customer | 50% | 0 to 100%. After each customer, how likely a worker who came of their own free will is to quit. 0 keeps them for good. |
 
 **Automatic & town**
 
@@ -406,6 +417,23 @@ Notes:
 - Scouted workers keep working as ordinary workers if IOU Ledger is removed later.
 - A follower in debt can be scouted, but a follower framework may still call them back to you.
 
+## Scouting anyone
+
+New in 0.4.4. With *Scout people who owe nothing* on, you can offer work to adults who owe nothing
+too. It needs no other mod; it works anywhere while you have at least one brothel.
+
+1. Talk to an adult who owes nothing and is not already a worker or one of a brothel's own
+   customers, and pick *(Offer work at the brothel)*.
+2. Pick how to put it from the AI-written lines: with one brothel, temptingly (easy money) or as
+   plain business; with several, each line names one of your brothels.
+3. They agree or refuse, by *Chance someone accepts* (10% by default), and say so in their own
+   words.
+4. If they agree, they become a worker and go to that brothel, the same way a scouted debtor does.
+   They keep their whole share of what every customer pays.
+5. After each customer they may quit, by *Chance to quit after a customer* (50% by default). If you
+   are in the brothel, they tell you they are quitting and why, in their own words, then go back
+   to their own life. You get a notification either way, and SkyrimNet remembers it.
+
 ## Several brothels
 
 You can run up to three brothels at once (a fourth slot is kept for later use).
@@ -477,7 +505,7 @@ Since 0.4.0 the brothel runs on OStim Standalone (tested on 7.5.1), on its own o
   bed of the brothel that OStim classes as a bed (double before single before bedroll), and two
   pairs never share one; with *Follow the framework* OStim chooses the furniture itself.
 - **Your positions.** When you take a customer yourself, each position in `positions.json` is
-  matched to an OStim scene tag and action (`ostimTags`, `ostimActions`: missionary, doggystyle,
+  matched to an OStim scene tag and action (`ostimtags`, `ostimactions`: missionary, doggystyle,
   cowgirl, reversecowgirl, standing and spooning, with vaginal sex; blowjob, cunnilingus, handjob,
   boobjob, footjob and anal sex as actions). Only the positions OStim has a scene for with your
   partner are offered; kneeling and lotus have no OStim tag and give a vaginal sex scene.
@@ -517,6 +545,29 @@ How 1.6x differs from P+:
 
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
+
+## What is new in 0.4.4
+
+- **Scouting anyone.** Talk to an adult who owes nothing and pick *(Offer work at the brothel)*.
+  They agree by a chance of their own (10% by default), keep everything they earn, and may quit
+  after any customer (50% by default), telling you why before they leave. Three new settings on the
+  *You* page. See [Scouting anyone](#scouting-anyone).
+- **Translated topic names and messages.** Every phrase from `strings.json` showed in English in a
+  translated game: the conversation topics, notifications and the *Manage Brothel* menu.
+  PapyrusUtil looks keys up in lower case and the file's keys had capitals. The keys are now lower
+  case; a translation of your own needs its keys lowered too.
+- **OStim scenes follow the position you pick.** For the same reason the OStim tags and actions in
+  `positions.json` were never read, so OStim always chose the scene itself. Rename `ostimTags` and
+  `ostimActions` to `ostimtags` and `ostimactions` if you edited your own copy.
+- **Your picked line is no longer lost.** If someone nearby started talking while you chose a line
+  in the dialogue menu, your line waited behind them and could be dropped, and the NPC answered a
+  line you never said. Anyone who starts talking while you choose is now cut off, so your line plays
+  at once, and the NPC answers only after it. `interrupt_others` in `choices.json` (0) turns the
+  cutting off.
+- **More customers appear in the brothel.** Raising *Customers* could put the new customers beside
+  one who had wandered out of the brothel, so none showed up. They now appear inside the current
+  brothel (beside you, else at the brothel's marker), customers who wandered out are brought back,
+  and disabled ones are replaced.
 
 ## What is new in 0.4.3
 
@@ -668,7 +719,8 @@ go home, save, then disable the mod.
 - `SKSE/Plugins/skyrimnet_Brothel/approaches.json`: the ways offers and invitations are made
   (English, read by the LLM).
 - `SKSE/Plugins/skyrimnet_Brothel/choices.json`: settings of the built-in choices (reply count,
-  timeouts, the language the lines are written in, the walk-away label); a translation replaces it.
+  timeouts, the language the lines are written in, the walk-away label, and `interrupt_others`:
+  whether others talking are cut off while you choose); a translation replaces it.
 - `SKSE/Plugins/SkyrimNet/external/local.skyrimnet-brothel/`: the SkyrimNet prompt that writes the
   lines you pick from.
 - `MCM/Config/skyrimnet_Brothel/`: the MCM Helper menu.
@@ -676,13 +728,15 @@ go home, save, then disable the mod.
   also shipped under every other game language's name (`_FRENCH`, `_GERMAN`, `_JAPANESE` and so
   on), since Skyrim reads only the file of the language it is set to; a translation replaces its
   own language's copy.
-- `SKSE/Plugins/skyrimnet_Brothel/strings.json`: phrases built around names ("X is approaching Y.");
-  a translation replaces this file too.
+- `SKSE/Plugins/skyrimnet_Brothel/strings.json`: phrases built around names ("X is approaching Y."),
+  topic names and menu lines; a translation replaces this file too. Its keys must be lower case
+  (`recruittopic`): PapyrusUtil never finds a key with capitals, and the English text is used
+  instead.
 - `SKSE/Plugins/skyrimnet_Brothel/positions.json`: the positions offered when you take a customer
   yourself: SexLab scene tags (`tags`), what each choice means (`labels`, English, read by the
-  LLM), and the OStim scene tag and action each one stands for (`ostimTags`, `ostimActions`; an
+  LLM), and the OStim scene tag and action each one stands for (`ostimtags`, `ostimactions`; an
   empty tag means the action alone). Edit, add or remove entries freely; keep all lists in the same
-  order.
+  order. PapyrusUtil finds only lower-case keys, so keep every key in these JSON files lower case.
 - `SKSE/SexLab/Furniture/00_skyrimnet_brothel_beds.yaml`: SexLab P+ furniture entries for
   Skyrim's common single and double beds, which SexLab P+ does not list itself, so scenes use them,
   and for the noble single bed, which SexLab P+ lists too low (pairs sank into it). SexLab P+ keeps

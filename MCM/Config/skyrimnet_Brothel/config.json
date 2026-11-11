@@ -576,6 +576,45 @@
 					"valueOptions": {
 						"sourceType": "ModSettingBool"
 					}
+				},
+				{
+					"type": "header",
+					"text": "$SNB_HeaderRecruit"
+				},
+				{
+					"id": "bScoutAnyone:General",
+					"type": "toggle",
+					"text": "$SNB_ScoutAnyone",
+					"help": "$SNB_ScoutAnyoneHelp",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iRecruitAccept:General",
+					"type": "slider",
+					"text": "$SNB_RecruitAccept",
+					"help": "$SNB_RecruitAcceptHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 100,
+						"step": 5,
+						"formatString": "{0}%",
+						"sourceType": "ModSettingInt"
+					}
+				},
+				{
+					"id": "iRecruitQuit:General",
+					"type": "slider",
+					"text": "$SNB_RecruitQuit",
+					"help": "$SNB_RecruitQuitHelp",
+					"valueOptions": {
+						"min": 0,
+						"max": 100,
+						"step": 5,
+						"formatString": "{0}%",
+						"sourceType": "ModSettingInt"
+					}
 				}
 			]
 		},

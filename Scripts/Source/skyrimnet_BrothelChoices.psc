@@ -324,11 +324,29 @@ Bool holdSpeaker
 Bool playerPlaying
 Bool playerStarted
 Float playerLastEnd
+; SkyrimNet has the player's line (SkyrimNet_SpeechStarted): it is being voiced or waits its turn.
+Bool playerLineQueued
+; While the player chooses in the dialogue menu, anyone else who starts talking is cut off, so the
+; picked line plays at once instead of waiting for them (SkyrimNet lets one speaker talk at a time).
+Bool quietWhileChoosing
+Bool otherStartedTalking
 
 Function RegisterSpeechEvents()
 	RegisterForModEvent("SkyrimNet_AudioStarted", "OnSkyrimNetAudioStarted")
 	RegisterForModEvent("SkyrimNet_AudioEnded", "OnSkyrimNetAudioEnded")
+	RegisterForModEvent("SkyrimNet_SpeechStarted", "OnSkyrimNetSpeechStarted")
 EndFunction
+
+Event OnSkyrimNetSpeechStarted(String eventName, String strArg, Float numArg, Form sender)
+	If !sender
+		Return
+	EndIf
+	If sender == Game.GetPlayer()
+		playerLineQueued = True
+	ElseIf quietWhileChoosing
+		otherStartedTalking = True
+	EndIf
+EndEvent
 
 Event OnSkyrimNetAudioStarted(String eventName, String strArg, Float numArg, Form sender)
 	If speaker && sender == speaker
@@ -343,6 +361,10 @@ Event OnSkyrimNetAudioStarted(String eventName, String strArg, Float numArg, For
 		EndIf
 		playerPlaying = True
 		playerStarted = True
+		playerLineQueued = True
+	EndIf
+	If sender && sender != Game.GetPlayer() && quietWhileChoosing
+		otherStartedTalking = True
 	EndIf
 EndEvent
 
@@ -369,7 +391,7 @@ Function WaitForPlayerLine(Float startTimeout, Float timeout)
 			If !playerPlaying && now - playerLastEnd >= 0.75 && SkyrimNetApi.GetSpeechQueueSize() == 0
 				Return
 			EndIf
-		ElseIf now - started >= startTimeout && SkyrimNetApi.GetSpeechQueueSize() == 0
+		ElseIf !playerLineQueued && now - started >= startTimeout && SkyrimNetApi.GetSpeechQueueSize() == 0
 			Return
 		EndIf
 		Utility.Wait(0.25)
@@ -433,6 +455,7 @@ Function ChooseReply()
 	conversationState = StateChoosing
 	; Cleared before the menu opens: the picked line can start playing while it is still open.
 	playerStarted = False
+	playerLineQueued = False
 	; The vanilla dialogue menu first; when it does not open, a message box (every reply in full),
 	; then the list menu, which cuts long lines.
 	Int picked = NoDialogueMenu
@@ -545,8 +568,16 @@ Int Function PickWithDialogueMenu()
 	replyCountGlobal.SetValue(replyCount as Float)
 	speaker.AddToFaction(speakerFaction)
 	chosenReply = NoReply
+	; Whoever is talking once the menu is open is cut off, and so is anyone who starts before the
+	; pick. Not earlier: OpenDialogueWith first lets the player's own previous line finish.
+	otherStartedTalking = False
+	quietWhileChoosing = ConfigInt("interrupt_others", 1) != 0
 	Bool opened = OpenDialogueWith(player)
 	Timing("dialogue menu opened=" + opened)
+	If opened && quietWhileChoosing && !playerLineQueued
+		otherStartedTalking = False
+		SkyrimNetApi.PurgeDialogue(False)
+	EndIf
 	; The menu fills its list a moment after it opens, and fills it again after a pick.
 	Int marked = 0
 	Int checks = 0
@@ -555,8 +586,19 @@ Int Function PickWithDialogueMenu()
 			marked += MarkRepliesNew()
 			checks += 1
 		EndIf
+		If quietWhileChoosing
+			If playerLineQueued || chosenReply != NoReply
+				; Picked: from here on a purge would drop the player's own line.
+				quietWhileChoosing = False
+			ElseIf otherStartedTalking
+				otherStartedTalking = False
+				SkyrimNetApi.PurgeDialogue(False)
+				Timing("cut off someone talking while the player chooses")
+			EndIf
+		EndIf
 		Utility.WaitMenuMode(0.1)
 	EndWhile
+	quietWhileChoosing = False
 	If ConfigInt("debug", 0) != 0
 		String report = "SNB Choices: menu=" + opened + " entries=" + UI.GetInt(DialogueMenuName, TopicListPath + ".entryList.length") \
 			+ " marked=" + marked + " chosen=" + chosenReply

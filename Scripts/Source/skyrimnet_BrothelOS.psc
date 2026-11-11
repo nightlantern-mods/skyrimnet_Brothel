@@ -29,7 +29,7 @@ Actor[] Function Sorted(Actor[] positions) Global
 EndFunction
 
 ; A scene for the pair on the bed (None: no furniture) for the brothel's position tag, mapped through
-; positions.json's "ostimTags" and "ostimActions" lists (same order as "tags") to an OStim scene tag
+; positions.json's "ostimtags" and "ostimactions" lists (same order as "tags") to an OStim scene tag
 ; and action: the tag with the action, else the action alone; "" when none is found or no tag was
 ; asked for (OStim then picks the scene itself).
 String Function FindScene(Actor[] sorted, ObjectReference bed, String positionTag, String positionsFile) Global
@@ -40,8 +40,8 @@ String Function FindScene(Actor[] sorted, ObjectReference bed, String positionTa
 	If index < 0
 		Return ""
 	EndIf
-	String sceneTag = JsonUtil.StringListGet(positionsFile, "ostimTags", index)
-	String actionType = JsonUtil.StringListGet(positionsFile, "ostimActions", index)
+	String sceneTag = JsonUtil.StringListGet(positionsFile, "ostimtags", index)
+	String actionType = JsonUtil.StringListGet(positionsFile, "ostimactions", index)
 	String furnitureType = ""
 	If bed
 		furnitureType = OFurniture.GetFurnitureType(bed)
