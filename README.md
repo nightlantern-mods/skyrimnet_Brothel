@@ -1,7 +1,8 @@
-# SkyrimNet Brothel 0.4.5
+# SkyrimNet Brothel 0.4.6
 
-> **0.4.5 fixes the dialogue menu ignoring your pick** after someone nearby was cut off while it
-> was open (new in 0.4.4). See [What is new in 0.4.5](#what-is-new-in-045).
+> **0.4.6: a worker who quits says goodbye and is done.** One who quit could keep talking to you,
+> urging you to leave with them. 0.4.5 fixed the dialogue menu ignoring your pick (new in 0.4.4).
+> See [What is new in 0.4.6](#what-is-new-in-046).
 
 > **New in 0.4.4: scouting anyone.** Talk to an adult who owes nothing and offer them work at
 > your brothel. It is a harder sell (10% agree by default), but no other mod is needed. Those who
@@ -548,6 +549,14 @@ How 1.6x differs from P+:
 
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
+
+## What is new in 0.4.6
+
+- **A worker who quits says goodbye and is done.** A worker who came of their own free will told
+  you they were quitting and why, and were then told to leave. One who lives where the brothel is
+  never walks off, so with SkyrimNet's continuous scene mode on they could keep talking to you,
+  urging you to leave with them. They now say it in a sentence or two as a goodbye that settles
+  it, ask nothing of you and expect no answer.
 
 ## What is new in 0.4.5
 

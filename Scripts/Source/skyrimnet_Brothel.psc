@@ -5527,7 +5527,10 @@ Function MaybeQuit(Actor worker)
 	EndIf
 	AcquireNpcTalk()
 	Float spokenAt = Utility.GetCurrentRealTime()
-	SkyrimNetApi.DirectNarration(n + " has just seen to a customer at the brothel, where " + HeOf(worker) + " has worked of " + HisOf(worker) 		+ " own free will (" + served + " customers so far), and has decided to quit. In " + HisOf(worker) + " own words, " + n + " tells " 		+ player.GetDisplayName() + " that " + HeOf(worker) + " is quitting and why, a reason that fits who " + HeOf(worker) 		+ " is and how the work went, and then leaves.", worker, player)
+	; A goodbye that settles it. "And then leaves" made the worker, who often lives where the brothel
+	; is and so never walks off, keep urging the player to leave with them under SkyrimNet's
+	; continuous scene mode.
+	SkyrimNetApi.DirectNarration(n + " has just seen to a customer at the brothel, where " + HeOf(worker) + " has worked of " + HisOf(worker) 		+ " own free will (" + served + " customers so far), and has decided to quit. In one or two short sentences of " + HisOf(worker) 		+ " own, " + n + " tells " + player.GetDisplayName() + " that " + HeOf(worker) + " is quitting the brothel and why, a reason that fits who " 		+ HeOf(worker) + " is and how the work went. It is a goodbye that settles the matter: " + HeOf(worker) + " asks nothing of " 		+ player.GetDisplayName() + ", invites no one anywhere and expects no answer, and has nothing more to say about it afterwards; " 		+ HeOf(worker) + " simply goes back to " + HisOf(worker) + " own life.", worker, player)
 	WaitForSpeech(spokenAt, -1)
 	ReleaseTalk()
 EndFunction
