@@ -1,4 +1,7 @@
-# SkyrimNet Brothel 0.4.4
+# SkyrimNet Brothel 0.4.5
+
+> **0.4.5 fixes the dialogue menu ignoring your pick** after someone nearby was cut off while it
+> was open (new in 0.4.4). See [What is new in 0.4.5](#what-is-new-in-045).
 
 > **New in 0.4.4: scouting anyone.** Talk to an adult who owes nothing and offer them work at
 > your brothel. It is a harder sell (10% agree by default), but no other mod is needed. Those who
@@ -546,6 +549,14 @@ How 1.6x differs from P+:
 Close every brothel in the MCM first so the customers and hired workers are removed and visitors
 go home, save, then disable the mod.
 
+## What is new in 0.4.5
+
+- **The dialogue menu no longer ignores your pick.** 0.4.4 cut off anyone who started talking
+  while you chose a line, and when that stopped a line already playing, the menu could stop
+  responding: picking a line did nothing until you left the menu and started again. Others are
+  now cut off only once, right before the menu opens. Someone who starts talking while it is open
+  is left to finish; your line then waits for them, and the NPC still answers only after your line.
+
 ## What is new in 0.4.4
 
 - **Scouting anyone.** Talk to an adult who owes nothing and pick *(Offer work at the brothel)*.
@@ -720,7 +731,7 @@ go home, save, then disable the mod.
   (English, read by the LLM).
 - `SKSE/Plugins/skyrimnet_Brothel/choices.json`: settings of the built-in choices (reply count,
   timeouts, the language the lines are written in, the walk-away label, and `interrupt_others`:
-  whether others talking are cut off while you choose); a translation replaces it.
+  whether others talking are cut off right before the menu opens); a translation replaces it.
 - `SKSE/Plugins/SkyrimNet/external/local.skyrimnet-brothel/`: the SkyrimNet prompt that writes the
   lines you pick from.
 - `MCM/Config/skyrimnet_Brothel/`: the MCM Helper menu.
